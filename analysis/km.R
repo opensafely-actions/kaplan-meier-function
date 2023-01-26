@@ -30,6 +30,7 @@ if(length(args)==0){
   event_date <- "death_date"
   censor_date <- "dereg_date"
   min_count <- as.integer("6")
+  method <- "linear"
   max_fup <- as.numeric("200")
   fill_times <- as.logical("TRUE")
   plot <- as.logical("FALSE")
@@ -58,8 +59,11 @@ if(length(args)==0){
                 help = "Censor variable name in the input dataset [default %default]. Should refer to a date variable, or a character of the form YYYY-MM-DD.",
                 metavar = "censor_varname"),
     make_option("--min_count", type = "integer", default = 6,
-                help = "The minimum permissable event and censor counts for each 'step' in the KM curve [default %default]. This ensures that ",
+                help = "The minimum permissable event and censor counts for each 'step' in the KM curve [default %default]. This ensures that at least `min_count` events occur at each event time.",
                 metavar = "min_count"),
+    make_option("--method", type = "character", default = "constant",
+                help = "Interpolation method after rounding [default %default]. The 'constant' method leaves the event times unchanged after rounding, making the KM curve have bigger, fewer steps. The 'linear' method linearly interpolates between rounded events times (then rounds to the nearest day), so that the steps appear more natural.",
+                metavar = "method"),
     make_option("--max_fup", type = "numeric", default = Inf,
                 help = "The maximum time. If event variables are dates, then this will be days. [default %default]. ",
                 metavar = "max_fup"),
@@ -82,12 +86,12 @@ if(length(args)==0){
   event_date <- opt$event_date
   censor_date <- opt$censor_date
   min_count <- opt$min_count
+  method <- opt$method
   max_fup <- opt$max_fup
   fill_times <- opt$fill_times
   plot <- opt$plot
 }
 
-###
 exposure_sym <- sym(exposure)
 subgroup_syms <- syms(subgroups)
 
@@ -125,12 +129,52 @@ tte <- function(origin_date, event_date, censor_date, na.censor=FALSE){
 
 ceiling_any <- function(x, to=1){
   # round to nearest 100 millionth to avoid floating point errors
-  ceiling(plyr::round_any(x/to, 1/100000000))*to
+  #ceiling(plyr::round_any(x/to, 1/100000000))*to
+  x - (x-1)%%to + (to-1)
+}
+
+floor_any <- function(x, to=1){
+  x - x%%to
 }
 
 roundmid_any <- function(x, to=1){
   # like ceiling_any, but centers on (integer) midpoint of the rounding points
   ceiling(x/to)*to - (floor(to/2)*(x!=0))
+}
+
+
+
+round_cmlcount <- function(x, time, min_count, method="linear", integer.times=TRUE) {
+
+  # take a vector of cumulative counts and round them according to...
+  stopifnot("x must be non-descreasing" = all(diff(x)>=0))
+  stopifnot("x must be integer" = all(x %% 1 ==0))
+
+  # round events such that the are no fewer than min_count events per step
+  # steps are then shifted by ` - floor(min_count/2)` to remove bias
+  if(method=="constant") {
+    rounded_counts <- roundmid_any(x, min_count)
+  }
+
+  # as above, but then linearly-interpolate event times between rounded steps
+  # this will also linearly interpolate event if _true_ counts are safe but "steppy" -- can we avoid this by not over-interpolating?
+  if(method=="linear") {
+    x_ceiling <- ceiling_any(x, min_count)
+    x_mid <- roundmid_any(x, min_count)
+#    naturally_steppy <- which((x - x_mid) == 0)
+    x_rle <- rle(x_ceiling)
+
+    # get index locations of step increases
+    steptime <- c(0,time[cumsum(x_rle$lengths)])
+
+    # get cumulative count at each step
+    stepheight <- c(0,x_rle$values)
+
+    rounded_counts <- approx(x=steptime, y=stepheight, xout = time, method=method)$y
+    if(integer.times) rounded_counts <- floor(rounded_counts)
+  }
+
+  return (rounded_counts)
 }
 
 
@@ -211,9 +255,9 @@ for (subgroup_i in subgroups) {
         N = max(n.risk, na.rm = TRUE),
 
         # rounded to `min_count - (min_count/2)`
-        cml.event = roundmid_any(cumsum(n.event), min_count),
-        cml.censor = roundmid_any(cumsum(n.censor), min_count), #cml.eventcensor - cml.event,
-        cml.eventcensor = cml.event + cml.censor, # roundmid_any(cumsum(n.event + n.censor), min_count),
+        cml.event = round_cmlcount(cumsum(n.event), time, min_count),
+        cml.censor = round_cmlcount(cumsum(n.censor), time, min_count),
+        cml.eventcensor = cml.event + cml.censor,
         n.event = diff(c(0, cml.event)),
         n.censor = diff(c(0, cml.censor)),
         n.risk = roundmid_any(N, min_count) - lag(cml.eventcensor, 1, 0),
