@@ -278,7 +278,7 @@ for (subgroup_i in subgroups) {
         # surv.high = exp(log(surv) + qnorm(0.975)*surv.ln.se),
 
         ## standard errors on complementary log-log scale
-        surv.cll = log(-log(surv)),
+        surv.cll = log(-log(surv)), # this is equivalent to the log cumulative hazard
         surv.cll.se = if_else(surv==1, 0, sqrt((1 / log(surv)^2) * cumsum(summand))), # assume SE is zero until there are events -- makes plotting easier
         surv.low = exp(-exp(surv.cll + qnorm(0.975) * surv.cll.se)),
         surv.high = exp(-exp(surv.cll + qnorm(0.025) * surv.cll.se)),
