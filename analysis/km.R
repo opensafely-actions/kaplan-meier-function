@@ -343,11 +343,24 @@ for (subgroup_i in subgroups) {
         surv_obj = purrr::map(data, ~ {
           stpm2(survival::Surv(event_time, event_indicator) ~ 1, data = .x, df=smooth_df)
         }),
+
         surv_smooth = purrr::map(surv_obj, ~ {
-          data_predict <- predict(
+
+          new_data <- data.frame(event_time=seq_len(max_fup))
+
+          surv_predict <- predict(
             .x,
-            newdata=data.frame(event_time=seq_len(max_fup)),
+            newdata=new_data,
             type="surv",
+            level=0.95,
+            se.fit=TRUE
+          )
+
+
+          hazard_predict <- predict(
+            .x,
+            newdata=new_data,
+            type="hazard",
             level=0.95,
             se.fit=TRUE
           )
@@ -356,12 +369,15 @@ for (subgroup_i in subgroups) {
             time = seq_len(max_fup),
             lagtime = lag(time, 1, 0), # assumes the time-origin is zero
             interval = time - lagtime,
-            surv = data_predict$Estimate,
-            surv.low = data_predict$lower,
-            surv.high = data_predict$upper,
+            surv = surv_predict$Estimate,
+            surv.low = surv_predict$lower,
+            surv.high = surv_predict$upper,
             risk = 1 - surv,
             risk.low = 1 - surv.high,
-            risk.high = 1 - surv.low
+            risk.high = 1 - surv.low,
+            hazard = hazard_predict$Estimate,
+            hazard.low = hazard_predict$lower,
+            hazard.high = hazard_predict$upper,
           )
         }),
       ) %>%
@@ -369,7 +385,7 @@ for (subgroup_i in subgroups) {
       tidyr::unnest(surv_smooth)
 
       ## write to disk
-      # arrow::write_feather(data_surv_smoothed, fs::path(dir_output, glue("km_estimates_{subgroup_i}.feather")))
+      arrow::write_feather(data_surv_smoothed, fs::path(dir_output, glue("km_estimates_{subgroup_i}.feather")))
   }
 
   if(plot){
