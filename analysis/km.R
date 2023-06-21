@@ -245,14 +245,14 @@ for (subgroup_i in subgroups) {
       }),
       surv_obj_tidy = purrr::map(surv_obj, ~ {
         tidied <- broom::tidy(.x)
-        if(fill_times){ # return survival table for each day of follow up
+        #if(fill_times){ # return survival table for each day of follow up
           tidied <- tidied %>%
           tidyr::complete(
             time = seq_len(max_fup), # fill in 1 row for each day of follow up
             fill = list(n.event = 0, n.censor = 0) # fill in zero events on those days
           ) %>%
           tidyr::fill(n.risk, .direction = c("up")) # fill in n.risk on each zero-event day
-        }
+        #}
       }),
     ) %>%
     dplyr::select(.subgroup, !!exposure_sym, surv_obj_tidy) %>%
@@ -299,7 +299,16 @@ for (subgroup_i in subgroups) {
         risk.se = surv.se,
         risk.ln.se = surv.ln.se,
         risk.low = 1 - surv.high,
-        risk.high = 1 - surv.low
+        risk.high = 1 - surv.low,
+
+        # restricted mean survival time.
+        # https://doi.org/10.1186/1471-2288-13-152
+        rmst = cumsum(surv), # this only works if one row per day using fill_times! otherwise need cumsum(surv*int)
+        rmst.se = sqrt(((2* cumsum(time*surv)) - (rmst^2))/n.risk), # this only works if one row per day using fill_times! otherwise need sqrt(((2* cumsum(time*interval*surv)) - (rmst^2))/n.risk)
+        #rmst.low = rmst + (qnorm(0.025) * rmst.se),
+        #rmst.high = rmst + (qnorm(0.975) * rmst.se),
+        rmst.low = cumsum(surv.low),
+        rmst.high = cumsum(surv.high),
       ) %>%
       filter(
         !(n.event==0 & n.censor==0 & !fill_times) # remove times where there are no events (unless all possible event times are requested with fill_times)
@@ -316,7 +325,8 @@ for (subgroup_i in subgroups) {
         cml.event, cml.censor,
         n.risk, n.event, n.censor,
         surv, surv.se, surv.low, surv.high,
-        risk, risk.se, risk.low, risk.high
+        risk, risk.se, risk.low, risk.high,
+        rmst, rmst.se, rmst.low, rmst.high,
       )
   }
 
@@ -356,6 +366,14 @@ for (subgroup_i in subgroups) {
             se.fit=TRUE
           )
 
+          # not yet available as "rmst currently only for single value"
+          # rmst_predict <- predict(
+          #   .x,
+          #   newdata=new_data,
+          #   type="rmst",
+          #   level=0.95,
+          #   se.fit=TRUE
+          # )
 
           hazard_predict <- predict(
             .x,
@@ -375,6 +393,9 @@ for (subgroup_i in subgroups) {
             risk = 1 - surv,
             risk.low = 1 - surv.high,
             risk.high = 1 - surv.low,
+            #rmst = rmst_predict$Estimate,
+            #rmst.low = rmst_predict$lower,
+            #rmst.high = rmst_predict$upper,
             hazard = hazard_predict$Estimate,
             hazard.low = hazard_predict$lower,
             hazard.high = hazard_predict$upper,
