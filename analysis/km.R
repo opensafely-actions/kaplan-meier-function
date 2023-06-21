@@ -33,6 +33,8 @@ if(length(args)==0){
   method <- "linear"
   max_fup <- as.numeric("200")
   fill_times <- as.logical("TRUE")
+  smooth <- as.logical("FALSE")
+  smooth_df <- as.integer("4")
   plot <- as.logical("FALSE")
 } else {
 
@@ -70,6 +72,12 @@ if(length(args)==0){
     make_option("--fill_times", type = "logical", default = TRUE,
                 help = "Should Kaplan-Meier estimates be provided for all possible event times (TRUE) or just observed event times (FALSE) [default %default]. ",
                 metavar = "TRUE/FALSE"),
+    make_option("--smooth", type = "logical", default = FALSE,
+                help = "Should Kaplan-Meier estimates be smoothed on the log cumulative hazard scale (TRUE) or not (FALSE) [default %default]. ",
+                metavar = "TRUE/FALSE"),
+    make_option("--smooth_df", type = "logical", default = 4,
+                help = "Degrees of freedom to use for the smoother [default %default]. Unused if smooth=FALSE.",
+                metavar = "smooth_df"),
     make_option("--plot", type = "logical", default = TRUE,
                 help = "Should Kaplan-Meier plots be created in the output folder? [default %default]. These are fairly basic plots for sense-checking purposes.",
                 metavar = "TRUE/FALSE")
@@ -89,11 +97,14 @@ if(length(args)==0){
   method <- opt$method
   max_fup <- opt$max_fup
   fill_times <- opt$fill_times
+  smooth <- opt$smooth
+  smooth_df <- opt$smooth_df
   plot <- opt$plot
 }
 
 exposure_sym <- sym(exposure)
 subgroup_syms <- syms(subgroups)
+
 
 # create output directories ----
 
@@ -311,9 +322,55 @@ for (subgroup_i in subgroups) {
 
   #data_surv_unrounded <- round_km(data_surv, 1)
   data_surv_rounded <- round_km(data_surv, min_count)
-
   ## write to disk
   arrow::write_feather(data_surv_rounded, fs::path(dir_output, glue("km_estimates_{subgroup_i}.feather")))
+
+  if(smooth){
+
+    # smooth the KM curve on the complementary log-log scale (ie, smooth the log cumulative hazard)
+    # using rtpm2 pacakge
+
+    library('rstpm2')
+
+    data_surv_smoothed <-
+      data_tte %>%
+      dplyr::mutate(
+        .subgroup = .data[[subgroup_i]]
+      ) %>%
+      dplyr::group_by(.subgroup, !!exposure_sym) %>%
+      tidyr::nest() %>%
+      dplyr::mutate(
+        surv_obj = purrr::map(data, ~ {
+          stpm2(survival::Surv(event_time, event_indicator) ~ 1, data = .x, df=smooth_df)
+        }),
+        surv_smooth = purrr::map(surv_obj, ~ {
+          data_predict <- predict(
+            .x,
+            newdata=data.frame(event_time=seq_len(max_fup)),
+            type="surv",
+            level=0.95,
+            se.fit=TRUE
+          )
+
+          tibble(
+            time = seq_len(max_fup),
+            lagtime = lag(time, 1, 0), # assumes the time-origin is zero
+            interval = time - lagtime,
+            surv = data_predict$Estimate,
+            surv.low = data_predict$lower,
+            surv.high = data_predict$upper,
+            risk = 1 - surv,
+            risk.low = 1 - surv.high,
+            risk.high = 1 - surv.low
+          )
+        }),
+      ) %>%
+      dplyr::select(.subgroup, !!exposure_sym, surv_smooth) %>%
+      tidyr::unnest(surv_smooth)
+
+      ## write to disk
+      # arrow::write_feather(data_surv_smoothed, fs::path(dir_output, glue("km_estimates_{subgroup_i}.feather")))
+  }
 
   if(plot){
 
@@ -358,6 +415,11 @@ for (subgroup_i in subgroups) {
     }
 
     km_plot_rounded <- km_plot(data_surv_rounded)
-    ggsave(filename = fs::path(dir_output, glue("km_plot_{subgroup_i}.png")), km_plot_rounded, width = 20, height = 20, units = "cm")
+    ggsave(filename = fs::path(dir_output, glue("km_plot_rounded_{subgroup_i}.png")), km_plot_rounded, width = 20, height = 20, units = "cm")
+
+    if(smooth){
+      km_plot_smoothed <- km_plot(data_surv_smoothed)
+      ggsave(filename = fs::path(dir_output, glue("km_plot_smoothed_{subgroup_i}.png")), km_plot_smoothed, width = 20, height = 20, units = "cm")
+    }
   }
 }
