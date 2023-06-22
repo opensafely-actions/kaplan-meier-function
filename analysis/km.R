@@ -393,9 +393,9 @@ for (subgroup_i in subgroups) {
             risk = 1 - surv,
             risk.low = 1 - surv.high,
             risk.high = 1 - surv.low,
-            #rmst = rmst_predict$Estimate,
-            #rmst.low = rmst_predict$lower,
-            #rmst.high = rmst_predict$upper,
+            rmst = cumsum(surv), # only works if one row per day
+            rmst.low = cumsum(surv.low),
+            rmst.high = cumsum(surv.high),
             hazard = hazard_predict$Estimate,
             hazard.low = hazard_predict$lower,
             hazard.high = hazard_predict$upper,
