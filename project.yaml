@@ -26,7 +26,7 @@ actions:
       --plot FALSE
     needs: [extract]
     outputs:
-      moderately_sensitive:
+      highly_sensitive:
         feather: output/km_estimates/*.feather
         #png: output/km_estimates/*.png
 
