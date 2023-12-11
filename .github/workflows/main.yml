@@ -1,0 +1,27 @@
+---
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test-integration:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opensafely-core/research-action@v2
+
+  tag-new-version:
+    needs: [test-integration]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag new version
+        uses: mathieudutour/github-tag-action@fcfbdceb3093f6d85a3b194740f8c6cec632f4e2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          create_annotated_tag: true
