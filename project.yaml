@@ -7,14 +7,14 @@ actions:
 
   extract_fixed:
     run: ehrql:v1 generate-dataset analysis/dataset_definition.py
-      --output output/extracts/extract.arrow
+      --output output/extract.arrow
     outputs:
       highly_sensitive:
-        cohort: output/extracts/extract.arrow
+        cohort: output/extract.arrow
 
   km:
-    run: r:latest analysis/km.R
-      --df_input output/input.feather
+    run: r:v2 analysis/km.R
+      --df_input output/extract.arrow
       --dir_output output/km_estimates/
       --exposure sex
       --subgroups age_group

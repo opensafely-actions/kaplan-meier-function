@@ -22,13 +22,13 @@ args <- commandArgs(trailingOnly=TRUE)
 
 if(length(args)==0){
   # use for interactive testing
-  df_input <- "output/input.feather"
+  df_input <- "output/extract.arrow"
   dir_output <- "output/km_estimates/"
   exposure <- c("sex")
-  subgroups <- c("previous_covid_test")
-  origin_date <- "start_date"
-  event_date <- "death_date"
-  censor_date <- "dereg_date"
+  subgroups <- c("age_group")
+  origin_date <- "first_vax_date"
+  event_date <- "second_vax_date"
+  censor_date <- "censoring_date"
   min_count <- as.integer("6")
   method <- "linear"
   max_fup <- as.numeric("200")
