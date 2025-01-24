@@ -5,7 +5,7 @@ expectations:
 
 actions:
 
-  extract_fixed:
+  extract:
     run: ehrql:v1 generate-dataset analysis/dataset_definition.py
       --output output/extract.arrow
     outputs:

@@ -28,10 +28,10 @@ if(length(args)==0){
   subgroups <- c("age_group")
   origin_date <- "first_vax_date"
   event_date <- "second_vax_date"
-  censor_date <- "censoring_date"
+  censor_date <- "censor_date"
   min_count <- as.integer("6")
   method <- "linear"
-  max_fup <- as.numeric("200")
+  max_fup <- as.numeric("365")
   fill_times <- as.logical("TRUE")
   smooth <- as.logical("FALSE")
   smooth_df <- as.integer("4")
@@ -229,7 +229,7 @@ if(!identical(as.integer(times_count), c(0L, 0L, nrow(data_tte)))) {
 
 for (subgroup_i in subgroups) {
 
-  #subgroup_i = "previous_covid_test"
+  #subgroup_i = "age_group"
 
   # for each exposure level and subgroup level, pass data through `survival::Surv` to get KM table
   data_surv <-

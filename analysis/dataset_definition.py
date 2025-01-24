@@ -1,10 +1,10 @@
 
 from ehrql import (
     case,
-    create_dataset,
-    days,
     when,
-    maximum_of
+    create_dataset,
+    minimum_of,
+    days
 )
 
 from ehrql.tables.tpp import (
@@ -95,4 +95,8 @@ dataset.deregistration_date = registered_patients.end_date
 
 dataset.death_date = ons_deaths.date
 
-dataset.censoring_date = minimum_of(dataset.deregistration_date, dataset.death_date)
+dataset.censor_date = minimum_of(dataset.deregistration_date, dataset.death_date) + days(1) 
+# add one day to ensure that time from origin (first vax  date) to censor date is at least 1
+# this is equivalent to assuming the origin event occurs at the start of the day, and censoring event occurs at the end of the day
+
+
