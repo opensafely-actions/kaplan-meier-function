@@ -25,7 +25,7 @@ if(length(args)==0){
   df_input <- "output/extract.arrow"
   dir_output <- "output/km_estimates/"
   exposure <- c("sex")
-  subgroups <- c("age_group")
+  subgroups <- "age_group"
   origin_date <- "first_vax_date"
   event_date <- "second_vax_date"
   censor_date <- "censor_date"
@@ -103,8 +103,15 @@ if(length(args)==0){
 }
 
 exposure_sym <- sym(exposure)
-subgroup_syms <- syms(subgroups)
+subgroup_sym <- sym(subgroups)
 
+filename_suffix <- ifelse(
+  length(subgroups)==0,
+  "",
+  glue("-{subgroups}")
+)
+
+subgroup_syms <- syms(subgroups)
 
 # create output directories ----
 
@@ -201,8 +208,9 @@ data_tte <-
   data_patients %>%
   transmute(
     patient_id,
+    .all = TRUE,
     !!exposure_sym,
-    !!!subgroup_syms,
+    !!subgroup_sym,
     event_date = as.Date(.data[[event_date]]),
     origin_date = as.Date(.data[[origin_date]]),
     censor_date = pmin(as.Date(.data[[censor_date]]), origin_date + max_fup, na.rm=TRUE),
@@ -227,236 +235,210 @@ if(!identical(as.integer(times_count), c(0L, 0L, nrow(data_tte)))) {
 
 # Get KM estimates ------
 
-for (subgroup_i in subgroups) {
 
-  #subgroup_i = "age_group"
+# for each exposure level and subgroup level, pass data through `survival::Surv` to get KM table
+data_surv <-
+  data_tte %>%
+  dplyr::group_by(!!subgroup_sym, !!exposure_sym) %>%
+  tidyr::nest() %>%
+  dplyr::mutate(
+    surv_obj = purrr::map(data, ~ {
+      survival::survfit(survival::Surv(event_time, event_indicator) ~ 1, data = .x, conf.type="log-log")
+    }),
+    surv_obj_tidy = purrr::map(surv_obj, ~ {
+      tidied <- broom::tidy(.x)
+      #if(fill_times){ # return survival data for each day of follow up
+        tidied <- tidied %>%
+        tidyr::complete(
+          time = seq_len(max_fup), # fill in 1 row for each day of follow up
+          fill = list(n.event = 0, n.censor = 0) # fill in zero events on those days
+        ) %>%
+        tidyr::fill(n.risk, .direction = c("up")) # fill in n.risk on each zero-event day
+      #}
+    }),
+  ) %>%
+  dplyr::select(!!subgroup_sym, !!exposure_sym, surv_obj_tidy) %>%
+  tidyr::unnest(surv_obj_tidy)
 
-  # for each exposure level and subgroup level, pass data through `survival::Surv` to get KM table
-  data_surv <-
-    data_tte %>%
-    dplyr::mutate(
-      .subgroup = .data[[subgroup_i]]
+# round event times such that no event time has fewer than `min_count` events
+# recalculate KM estimates based on these rounded event times
+round_km <- function(.data, min_count) {
+  .data %>%
+    mutate(
+      N = max(n.risk, na.rm = TRUE),
+      # rounded to `min_count - (min_count/2)`
+      cml.event = round_cmlcount(cumsum(n.event), time, min_count),
+      cml.censor = round_cmlcount(cumsum(n.censor), time, min_count),
+      cml.eventcensor = cml.event + cml.censor,
+      n.event = diff(c(0, cml.event)),
+      n.censor = diff(c(0, cml.censor)),
+      n.risk = roundmid_any(N, min_count) - lag(cml.eventcensor, 1, 0),
+      # KM estimate for event of interest, combining censored and competing events as censored
+      summand = (1 / (n.risk - n.event)) - (1 / n.risk), # = n.event / ((n.risk - n.event) * n.risk) but re-written to prevent integer overflow
+      surv = cumprod(1 - n.event / n.risk),
+      # standard errors on survival scale
+      surv.se = surv * sqrt(cumsum(summand)), # greenwood's formula
+      # surv.low = surv + qnorm(0.025)*surv.se,
+      # surv.high = surv + qnorm(0.975)*surv.se,
+      ## standard errors on log scale
+      surv.ln.se = surv.se / surv,
+      # surv.low = exp(log(surv) + qnorm(0.025)*surv.ln.se),
+      # surv.high = exp(log(surv) + qnorm(0.975)*surv.ln.se),
+      ## standard errors on complementary log-log scale
+      surv.cll = log(-log(surv)), # this is equivalent to the log cumulative hazard
+      surv.cll.se = if_else(surv==1, 0, sqrt((1 / log(surv)^2) * cumsum(summand))), # assume SE is zero until there are events -- makes plotting easier
+      surv.low = exp(-exp(surv.cll + qnorm(0.975) * surv.cll.se)),
+      surv.high = exp(-exp(surv.cll + qnorm(0.025) * surv.cll.se)),
+      #risk (= complement of survival)
+      risk = 1 - surv,
+      risk.se = surv.se,
+      risk.ln.se = surv.ln.se,
+      risk.low = 1 - surv.high,
+      risk.high = 1 - surv.low,
+      # restricted mean survival time.
+      # https://doi.org/10.1186/1471-2288-13-152
+      rmst = cumsum(surv), # this only works if one row per day using fill_times! otherwise need cumsum(surv*int)
+      rmst.se = sqrt(((2* cumsum(time*surv)) - (rmst^2))/n.risk), # this only works if one row per day using fill_times! otherwise need sqrt(((2* cumsum(time*interval*surv)) - (rmst^2))/n.risk)
+      #rmst.low = rmst + (qnorm(0.025) * rmst.se),
+      #rmst.high = rmst + (qnorm(0.975) * rmst.se),
+      rmst.low = cumsum(surv.low),
+      rmst.high = cumsum(surv.high),
     ) %>%
-    dplyr::group_by(.subgroup, !!exposure_sym) %>%
+    filter(
+      !(n.event==0 & n.censor==0 & !fill_times) # remove times where there are no events (unless all possible event times are requested with fill_times)
+    ) %>%
+    mutate(
+      lagtime = lag(time, 1, 0), # assumes the time-origin is zero
+      interval = time - lagtime,
+    ) %>%
+    transmute(
+      #.subgroup_var = subgroup_i,
+      #.subgroup,
+      !!subgroup_sym,
+      !!exposure_sym,
+      time, lagtime, interval,
+      cml.event, cml.censor,
+      n.risk, n.event, n.censor,
+      surv, surv.se, surv.low, surv.high,
+      risk, risk.se, risk.low, risk.high,
+      rmst, rmst.se, rmst.low, rmst.high,
+    )
+}
+#data_surv_unrounded <- round_km(data_surv, 1)
+data_surv_rounded <- round_km(data_surv, min_count)
+
+## write to disk
+arrow::write_feather(data_surv_rounded, fs::path(dir_output, glue("km_estimates{filename_suffix}.feather")))
+
+if(smooth){
+  # smooth the KM curve on the complementary log-log scale (ie, smooth the log cumulative hazard)
+  # using rtpm2 pacakge
+  library('rstpm2')
+  data_surv_smoothed <-
+    data_tte %>%
+    # dplyr::mutate(
+    #   .subgroup = .data[[subgroup_i]]
+    # ) %>%
+    dplyr::group_by(!!subgroup_sym, !!exposure_sym) %>%
     tidyr::nest() %>%
     dplyr::mutate(
       surv_obj = purrr::map(data, ~ {
-        survival::survfit(survival::Surv(event_time, event_indicator) ~ 1, data = .x, conf.type="log-log")
+        stpm2(survival::Surv(event_time, event_indicator) ~ 1, data = .x, df=smooth_df)
       }),
-      surv_obj_tidy = purrr::map(surv_obj, ~ {
-        tidied <- broom::tidy(.x)
-        #if(fill_times){ # return survival table for each day of follow up
-          tidied <- tidied %>%
-          tidyr::complete(
-            time = seq_len(max_fup), # fill in 1 row for each day of follow up
-            fill = list(n.event = 0, n.censor = 0) # fill in zero events on those days
-          ) %>%
-          tidyr::fill(n.risk, .direction = c("up")) # fill in n.risk on each zero-event day
-        #}
+      surv_smooth = purrr::map(surv_obj, ~ {
+        new_data <- data.frame(event_time=seq_len(max_fup))
+        surv_predict <- predict(
+          .x,
+          newdata=new_data,
+          type="surv",
+          level=0.95,
+          se.fit=TRUE
+        )
+        # not yet available as "rmst currently only for single value"
+        # rmst_predict <- predict(
+        #   .x,
+        #   newdata=new_data,
+        #   type="rmst",
+        #   level=0.95,
+        #   se.fit=TRUE
+        # )
+        hazard_predict <- predict(
+          .x,
+          newdata=new_data,
+          type="hazard",
+          level=0.95,
+          se.fit=TRUE
+        )
+        tibble(
+          time = seq_len(max_fup),
+          lagtime = lag(time, 1, 0), # assumes the time-origin is zero
+          interval = time - lagtime,
+          surv = surv_predict$Estimate,
+          surv.low = surv_predict$lower,
+          surv.high = surv_predict$upper,
+          risk = 1 - surv,
+          risk.low = 1 - surv.high,
+          risk.high = 1 - surv.low,
+          rmst = cumsum(surv), # only works if one row per day
+          rmst.low = cumsum(surv.low),
+          rmst.high = cumsum(surv.high),
+          hazard = hazard_predict$Estimate,
+          hazard.low = hazard_predict$lower,
+          hazard.high = hazard_predict$upper,
+        )
       }),
     ) %>%
-    dplyr::select(.subgroup, !!exposure_sym, surv_obj_tidy) %>%
-    tidyr::unnest(surv_obj_tidy)
+    dplyr::select(!!subgroup_sym, !!exposure_sym, surv_smooth) %>%
+    tidyr::unnest(surv_smooth)
+    ## write to disk
+    arrow::write_feather(data_surv_smoothed, fs::path(dir_output, glue("km_estimates{filename_suffix}.feather")))
+}
 
-  # round event times such that no event time has fewer than `min_count` events
-  # recalculate KM estimates based on these rounded event times
-  round_km <- function(.data, min_count) {
+if(plot){
+  km_plot <- function(.data) {
     .data %>%
-      mutate(
-        N = max(n.risk, na.rm = TRUE),
-
-        # rounded to `min_count - (min_count/2)`
-        cml.event = round_cmlcount(cumsum(n.event), time, min_count),
-        cml.censor = round_cmlcount(cumsum(n.censor), time, min_count),
-        cml.eventcensor = cml.event + cml.censor,
-        n.event = diff(c(0, cml.event)),
-        n.censor = diff(c(0, cml.censor)),
-        n.risk = roundmid_any(N, min_count) - lag(cml.eventcensor, 1, 0),
-
-        # KM estimate for event of interest, combining censored and competing events as censored
-        summand = (1 / (n.risk - n.event)) - (1 / n.risk), # = n.event / ((n.risk - n.event) * n.risk) but re-written to prevent integer overflow
-        surv = cumprod(1 - n.event / n.risk),
-
-        # standard errors on survival scale
-        surv.se = surv * sqrt(cumsum(summand)), # greenwood's formula
-        # surv.low = surv + qnorm(0.025)*surv.se,
-        # surv.high = surv + qnorm(0.975)*surv.se,
-
-
-        ## standard errors on log scale
-        surv.ln.se = surv.se / surv,
-        # surv.low = exp(log(surv) + qnorm(0.025)*surv.ln.se),
-        # surv.high = exp(log(surv) + qnorm(0.975)*surv.ln.se),
-
-        ## standard errors on complementary log-log scale
-        surv.cll = log(-log(surv)), # this is equivalent to the log cumulative hazard
-        surv.cll.se = if_else(surv==1, 0, sqrt((1 / log(surv)^2) * cumsum(summand))), # assume SE is zero until there are events -- makes plotting easier
-        surv.low = exp(-exp(surv.cll + qnorm(0.975) * surv.cll.se)),
-        surv.high = exp(-exp(surv.cll + qnorm(0.025) * surv.cll.se)),
-
-        #risk (= complement of survival)
-        risk = 1 - surv,
-        risk.se = surv.se,
-        risk.ln.se = surv.ln.se,
-        risk.low = 1 - surv.high,
-        risk.high = 1 - surv.low,
-
-        # restricted mean survival time.
-        # https://doi.org/10.1186/1471-2288-13-152
-        rmst = cumsum(surv), # this only works if one row per day using fill_times! otherwise need cumsum(surv*int)
-        rmst.se = sqrt(((2* cumsum(time*surv)) - (rmst^2))/n.risk), # this only works if one row per day using fill_times! otherwise need sqrt(((2* cumsum(time*interval*surv)) - (rmst^2))/n.risk)
-        #rmst.low = rmst + (qnorm(0.025) * rmst.se),
-        #rmst.high = rmst + (qnorm(0.975) * rmst.se),
-        rmst.low = cumsum(surv.low),
-        rmst.high = cumsum(surv.high),
+      group_modify(
+        ~ add_row(
+          .x,
+          time = 0, # assumes time origin is zero
+          lagtime = 0,
+          surv = 1,
+          surv.low = 1,
+          surv.high = 1,
+          risk = 0,
+          risk.low = 0,
+          risk.high = 0,
+          .before = 0
+        )
       ) %>%
-      filter(
-        !(n.event==0 & n.censor==0 & !fill_times) # remove times where there are no events (unless all possible event times are requested with fill_times)
-      ) %>%
-      mutate(
-        lagtime = lag(time, 1, 0), # assumes the time-origin is zero
-        interval = time - lagtime,
-      ) %>%
-      transmute(
-        .subgroup_var = subgroup_i,
-        .subgroup,
-        !!exposure_sym,
-        time, lagtime, interval,
-        cml.event, cml.censor,
-        n.risk, n.event, n.censor,
-        surv, surv.se, surv.low, surv.high,
-        risk, risk.se, risk.low, risk.high,
-        rmst, rmst.se, rmst.low, rmst.high,
+      ggplot(aes(group = !!exposure_sym, colour = !!exposure_sym, fill = !!exposure_sym)) +
+      geom_step(aes(x = time, y = risk), direction = "vh") +
+      geom_step(aes(x = time, y = risk), direction = "vh", linetype = "dashed", alpha = 0.5) +
+      geom_rect(aes(xmin = lagtime, xmax = time, ymin = risk.low, ymax = risk.high), alpha = 0.1, colour = "transparent") +
+      facet_grid(rows = vars(.subgroup)) +
+      scale_color_brewer(type = "qual", palette = "Set1", na.value = "grey") +
+      scale_fill_brewer(type = "qual", palette = "Set1", guide = "none", na.value = "grey") +
+      scale_y_continuous(expand = expansion(mult = c(0, 0.01))) +
+      coord_cartesian(xlim = c(0, NA)) +
+      labs(
+        x = "Days since origin",
+        y = "Kaplan-Meier estimate",
+        colour = NULL,
+        title = NULL
+      ) +
+      theme_minimal() +
+      theme(
+        axis.line.x = element_line(colour = "black"),
+        panel.grid.minor.x = element_blank(),
+        legend.position = c(.05, .95),
+        legend.justification = c(0, 1),
       )
   }
-
-  #data_surv_unrounded <- round_km(data_surv, 1)
-  data_surv_rounded <- round_km(data_surv, min_count)
-  ## write to disk
-  arrow::write_feather(data_surv_rounded, fs::path(dir_output, glue("km_estimates_{subgroup_i}.feather")))
-
+  km_plot_rounded <- km_plot(data_surv_rounded)
+  ggsave(filename = fs::path(dir_output, glue("km_plot_rounded{filename_suffix}.png")), km_plot_rounded, width = 20, height = 20, units = "cm")
   if(smooth){
-
-    # smooth the KM curve on the complementary log-log scale (ie, smooth the log cumulative hazard)
-    # using rtpm2 pacakge
-
-    library('rstpm2')
-
-    data_surv_smoothed <-
-      data_tte %>%
-      dplyr::mutate(
-        .subgroup = .data[[subgroup_i]]
-      ) %>%
-      dplyr::group_by(.subgroup, !!exposure_sym) %>%
-      tidyr::nest() %>%
-      dplyr::mutate(
-        surv_obj = purrr::map(data, ~ {
-          stpm2(survival::Surv(event_time, event_indicator) ~ 1, data = .x, df=smooth_df)
-        }),
-
-        surv_smooth = purrr::map(surv_obj, ~ {
-
-          new_data <- data.frame(event_time=seq_len(max_fup))
-
-          surv_predict <- predict(
-            .x,
-            newdata=new_data,
-            type="surv",
-            level=0.95,
-            se.fit=TRUE
-          )
-
-          # not yet available as "rmst currently only for single value"
-          # rmst_predict <- predict(
-          #   .x,
-          #   newdata=new_data,
-          #   type="rmst",
-          #   level=0.95,
-          #   se.fit=TRUE
-          # )
-
-          hazard_predict <- predict(
-            .x,
-            newdata=new_data,
-            type="hazard",
-            level=0.95,
-            se.fit=TRUE
-          )
-
-          tibble(
-            time = seq_len(max_fup),
-            lagtime = lag(time, 1, 0), # assumes the time-origin is zero
-            interval = time - lagtime,
-            surv = surv_predict$Estimate,
-            surv.low = surv_predict$lower,
-            surv.high = surv_predict$upper,
-            risk = 1 - surv,
-            risk.low = 1 - surv.high,
-            risk.high = 1 - surv.low,
-            rmst = cumsum(surv), # only works if one row per day
-            rmst.low = cumsum(surv.low),
-            rmst.high = cumsum(surv.high),
-            hazard = hazard_predict$Estimate,
-            hazard.low = hazard_predict$lower,
-            hazard.high = hazard_predict$upper,
-          )
-        }),
-      ) %>%
-      dplyr::select(.subgroup, !!exposure_sym, surv_smooth) %>%
-      tidyr::unnest(surv_smooth)
-
-      ## write to disk
-      arrow::write_feather(data_surv_smoothed, fs::path(dir_output, glue("km_estimates_{subgroup_i}.feather")))
-  }
-
-  if(plot){
-
-    km_plot <- function(.data) {
-      .data %>%
-        group_modify(
-          ~ add_row(
-            .x,
-            time = 0, # assumes time origin is zero
-            lagtime = 0,
-            surv = 1,
-            surv.low = 1,
-            surv.high = 1,
-            risk = 0,
-            risk.low = 0,
-            risk.high = 0,
-            .before = 0
-          )
-        ) %>%
-        ggplot(aes(group = !!exposure_sym, colour = !!exposure_sym, fill = !!exposure_sym)) +
-        geom_step(aes(x = time, y = risk), direction = "vh") +
-        geom_step(aes(x = time, y = risk), direction = "vh", linetype = "dashed", alpha = 0.5) +
-        geom_rect(aes(xmin = lagtime, xmax = time, ymin = risk.low, ymax = risk.high), alpha = 0.1, colour = "transparent") +
-        facet_grid(rows = vars(.subgroup)) +
-        scale_color_brewer(type = "qual", palette = "Set1", na.value = "grey") +
-        scale_fill_brewer(type = "qual", palette = "Set1", guide = "none", na.value = "grey") +
-        scale_y_continuous(expand = expansion(mult = c(0, 0.01))) +
-        coord_cartesian(xlim = c(0, NA)) +
-        labs(
-          x = "Days since origin",
-          y = "Kaplan-Meier estimate",
-          colour = NULL,
-          title = NULL
-        ) +
-        theme_minimal() +
-        theme(
-          axis.line.x = element_line(colour = "black"),
-          panel.grid.minor.x = element_blank(),
-          legend.position = c(.05, .95),
-          legend.justification = c(0, 1),
-        )
-    }
-
-    km_plot_rounded <- km_plot(data_surv_rounded)
-    ggsave(filename = fs::path(dir_output, glue("km_plot_rounded_{subgroup_i}.png")), km_plot_rounded, width = 20, height = 20, units = "cm")
-
-    if(smooth){
-      km_plot_smoothed <- km_plot(data_surv_smoothed)
-      ggsave(filename = fs::path(dir_output, glue("km_plot_smoothed_{subgroup_i}.png")), km_plot_smoothed, width = 20, height = 20, units = "cm")
-    }
+    km_plot_smoothed <- km_plot(data_surv_smoothed)
+    ggsave(filename = fs::path(dir_output, glue("km_plot_smoothed{filename_suffix}.png")), km_plot_smoothed, width = 20, height = 20, units = "cm")
   }
 }
+
