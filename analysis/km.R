@@ -107,6 +107,7 @@ if(length(args)==0){
   #fill_times <- opt$fill_times
   smooth <- opt$smooth
   smooth_df <- opt$smooth_df
+  concise <- opt$concise
   plot <- opt$plot
 }
 
