@@ -23,7 +23,6 @@ actions:
       --censor_date censor_date
       --min_count 6
       --max_fup 365
-      --fill_times TRUE
       --plot FALSE
     needs: [extract]
     outputs:
