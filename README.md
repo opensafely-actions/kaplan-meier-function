@@ -2,7 +2,11 @@
 
 This is the code and configuration for `kaplan-meier-function`, an R reusable action for the OpenSAFELY framework.
 
-Given a dataset containing start dates, event dates, censoring dates, treatment groups, the action returns Kaplan-Meier estimates for these characteristics. Additional arguments provide control over estiamtion withn sub-groups, the level of rounding, smoothing, maximum follow-up duration, and other elements.
+Given a dataset containing start dates, event dates, censoring dates, exposure groups, the action returns Kaplan-Meier estimates for these characteristics. 
+Additional arguments provide control over estimation within sub-groups, the level of rounding, smoothing, maximum follow-up duration, and other elements.
+
+There is EXPERIMENTAL support for statistical disclosure control in this repo, with further assurance and methodological explanations pending. 
+We recommend comparing rounded KM estimates to the unrounded KM estimates (prior to release) to ensure that the rounded curves are a sensible approximation
 
 Further details about this reusable action to follow.
 
