@@ -39,6 +39,7 @@ if(length(args)==0){
   #fill_times <- as.logical("TRUE")
   smooth <- as.logical("FALSE")
   smooth_df <- as.integer("4")
+  concise <- as.logical("TRUE")
   plot <- as.logical("FALSE")
 } else {
 
@@ -82,6 +83,9 @@ if(length(args)==0){
     make_option("--smooth_df", type = "logical", default = 4,
                 help = "Degrees of freedom to use for the smoother [default %default]. Unused if smooth=FALSE.",
                 metavar = "smooth_df"),
+    make_option("--concise", type = "logical", default = TRUE,
+                help = "Should the outputted table only report core variables (defined here as exposure, subgroups, time, number at risk, cumulative number of events, cumulative incidence, and confidence limits) (TRUE) or should it report everything (FALSE)? [default %default]. ",
+                metavar = "TRUE/FALSE"),
     make_option("--plot", type = "logical", default = TRUE,
                 help = "Should Kaplan-Meier plots be created in the output folder? [default %default]. These are fairly basic plots for sense-checking purposes.",
                 metavar = "TRUE/FALSE")
@@ -112,7 +116,7 @@ if(length(args)==0){
 # use `syms()` instead of `sym()`
 # even though it's possible to pull only one exposure or subgroup variable is from the args (without hacking!)
 # this ensures that if `exposure` or `subgroups` is not used, the quasiquotation still works inside ggplot, transmute, etc
-#exposure_sym <- sym(exposure)
+exposure_sym <- sym(exposure)
 exposure_syms <- syms(exposure)
 subgroup_syms <- syms(subgroups)
 
@@ -194,7 +198,8 @@ data_surv <-
 # recalculate KM estimates based on these rounded event times
 
 round_km <- function(.data, min_count, method="constant") {
-  .data |>
+  rounded_data <-
+    .data |>
     mutate(
       N = max(n.risk, na.rm = TRUE),
       # rounded to `min_count - (min_count/2)`
@@ -238,7 +243,7 @@ round_km <- function(.data, min_count, method="constant") {
     # filter(
     #   !(n.event==0 & n.censor==0 & !fill_times) # remove times where there are no events (unless all possible event times are requested with fill_times)
     # ) |>
-    transmute(
+    select(
       !!!subgroup_syms,
       !!!exposure_syms,
       time,
@@ -248,7 +253,21 @@ round_km <- function(.data, min_count, method="constant") {
       cmlinc, cmlinc.se, cmlinc.low, cmlinc.high,
       rmst, rmst.se, rmst.low, rmst.high,
     )
+
+  if(concise){
+    rounded_data %>% select(
+      !!!subgroup_syms,
+      !!!exposure_syms,
+      time,
+      cml.event,
+      n.risk,
+      cmlinc, cmlinc.low, cmlinc.high
+    )
+  } else {
+    rounded_data
+  }
 }
+
 
 data_surv_unrounded <- round_km(data_surv, 1)
 data_surv_rounded <- round_km(data_surv, min_count, method=method)
@@ -294,8 +313,6 @@ if(smooth){
         )
         tibble(
           time = seq_len(max_fup),
-          lagtime = lag(time, 1, 0), # assumes the time-origin is zero
-          interval = time - lagtime,
           surv = surv_predict$Estimate,
           surv.low = surv_predict$lower,
           surv.high = surv_predict$upper,
@@ -313,6 +330,19 @@ if(smooth){
     ) |>
     dplyr::select(!!!subgroup_syms, !!!exposure_syms, surv_smooth) |>
     tidyr::unnest(surv_smooth)
+
+  if(concise){
+    data_surv_smoothed <-
+      data_surv_smoothed |>
+      select(
+        !!!subgroup_syms,
+        !!!exposure_syms,
+        time,
+        cml.event,
+        n.risk,
+        cmlinc, cmlinc.low, cmlinc.high
+      )
+    }
     ## write to disk
     arrow::write_feather(data_surv_smoothed, fs::path(dir_output, glue("km_estimates{filename_suffix}.feather")))
 }
