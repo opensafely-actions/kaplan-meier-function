@@ -29,7 +29,7 @@ if(length(args)==0){
   df_input <- "output/extract.arrow"
   dir_output <- "output/km_estimates/"
   exposure <- c("sex")
-  subgroups <- "age_group"
+  subgroups <- c("age_group")
   origin_date <- "first_vax_date"
   event_date <- "second_vax_date"
   censor_date <- "censor_date"
@@ -50,7 +50,7 @@ if(length(args)==0){
                 help = "Output directory [default %default].",
                 metavar = "output"),
     make_option("--exposure", type = "character", default = NULL,
-                help = "Exposure variable name in the input dataset [default %default]. All outputs will be stratified by this variable.",
+                help = "Exposure variable name in the input dataset [default %default]. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same)",
                 metavar = "exposure_varname"),
     make_option("--subgroups", type = "character", default = NULL,
                 help = "Subgroup variable name or list of variable names [default %default]. If subgroups are used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If NULL, no stratification will occur.",
@@ -106,16 +106,23 @@ if(length(args)==0){
   plot <- opt$plot
 }
 
-exposure_sym <- sym(exposure)
-subgroup_sym <- sym(subgroups)
+
+# Use quasiquotation for passing exposure and subgroup stratification variables
+# around the place
+# use `syms()` instead of `sym()`
+# even though it's possible to pull only one exposure or subgroup variable is from the args (without hacking!)
+# this ensures that if `exposure` or `subgroups` is not used, the quasiquotation still works inside ggplot, transmute, etc
+#exposure_sym <- sym(exposure)
+exposure_syms <- syms(exposure)
+subgroup_syms <- syms(subgroups)
+
+
 
 filename_suffix <- ifelse(
   length(subgroups)==0,
   "",
   glue("-{subgroups}")
 )
-
-subgroup_syms <- syms(subgroups)
 
 # create output directories ----
 
@@ -136,8 +143,8 @@ data_tte <-
   transmute(
     patient_id,
     .all = TRUE,
-    !!exposure_sym,
-    !!subgroup_sym,
+    !!!exposure_syms,
+    !!!subgroup_syms,
     event_date = as.Date(.data[[event_date]]),
     origin_date = as.Date(.data[[origin_date]]),
     censor_date = pmin(as.Date(.data[[censor_date]]), origin_date + max_fup, na.rm=TRUE),
@@ -166,7 +173,7 @@ if(!identical(as.integer(times_count), c(0L, 0L, nrow(data_tte)))) {
 # for each exposure level and subgroup level, pass data through `survival::Surv` to get KM table
 data_surv <-
   data_tte |>
-  dplyr::group_by(!!subgroup_sym, !!exposure_sym) |>
+  dplyr::group_by(!!!subgroup_syms, !!!exposure_syms) |>
   tidyr::nest() |>
   dplyr::mutate(
     surv_obj_tidy = purrr::map(data, ~ {
@@ -232,8 +239,8 @@ round_km <- function(.data, min_count, method="constant") {
     #   !(n.event==0 & n.censor==0 & !fill_times) # remove times where there are no events (unless all possible event times are requested with fill_times)
     # ) |>
     transmute(
-      !!subgroup_sym,
-      !!exposure_sym,
+      !!!subgroup_syms,
+      !!!exposure_syms,
       time,
       cml.event, cml.censor,
       n.risk, n.event, n.censor,
@@ -255,7 +262,7 @@ if(smooth){
   library('rstpm2')
   data_surv_smoothed <-
     data_tte |>
-    dplyr::group_by(!!subgroup_sym, !!exposure_sym) |>
+    dplyr::group_by(!!!subgroup_syms, !!!exposure_syms) |>
     tidyr::nest() |>
     dplyr::mutate(
       surv_obj = purrr::map(data, ~ {
@@ -304,7 +311,7 @@ if(smooth){
         )
       }),
     ) |>
-    dplyr::select(!!subgroup_sym, !!exposure_sym, surv_smooth) |>
+    dplyr::select(!!!subgroup_syms, !!!exposure_syms, surv_smooth) |>
     tidyr::unnest(surv_smooth)
     ## write to disk
     arrow::write_feather(data_surv_smoothed, fs::path(dir_output, glue("km_estimates{filename_suffix}.feather")))
@@ -312,7 +319,9 @@ if(smooth){
 
 if(plot){
   km_plot <- function(.data) {
-    .data |>
+
+    data_with_time0 <-
+      .data |>
       mutate(
         lagtime = lag(time, 1, 0), # assumes the time-origin is zero
       ) %>%
@@ -326,18 +335,25 @@ if(plot){
           cmlinc.high = 0,
           .before = 0
         )
-      ) |>
-      ggplot(aes(group = !!exposure_sym, colour = !!exposure_sym, fill = !!exposure_sym)) +
+      )
+
+    ggplot_init <- if(length(exposure)==0L){
+      ggplot(data_with_time0)
+    } else {
+      ggplot(data_with_time0, aes(group = !!exposure_sym, colour = !!exposure_sym, fill = !!exposure_sym))
+    }
+
+    ggplot_init +
       geom_step(aes(x = time, y = cmlinc), direction = "vh") +
       geom_step(aes(x = time, y = cmlinc), direction = "vh", linetype = "dashed", alpha = 0.5) +
       geom_rect(aes(xmin = lagtime, xmax = time, ymin = cmlinc.low, ymax = cmlinc.high), alpha = 0.1, colour = "transparent") +
-      facet_grid(rows = vars(!!subgroup_sym)) +
+      facet_grid(rows = vars(!!!subgroup_syms)) +
       scale_color_brewer(type = "qual", palette = "Set1", na.value = "grey") +
       scale_fill_brewer(type = "qual", palette = "Set1", guide = "none", na.value = "grey") +
       scale_y_continuous(expand = expansion(mult = c(0, 0.01))) +
       coord_cartesian(xlim = c(0, NA)) +
       labs(
-        x = "Days since origin",
+        x = "Time",
         y = "Cumulative Incidence",
         colour = NULL,
         title = NULL
@@ -346,7 +362,8 @@ if(plot){
       theme(
         axis.line.x = element_line(colour = "black"),
         panel.grid.minor.x = element_blank(),
-        legend.position = c(.05, .95),
+        legend.position = "inside",
+        legend.position.inside = c(.05, .95),
         legend.justification = c(0, 1),
       )
   }
