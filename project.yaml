@@ -6,23 +6,24 @@ expectations:
 actions:
 
   extract:
-    run: cohortextractor:latest generate_cohort --study-definition study_definition --output-format feather
+    run: ehrql:v1 generate-dataset analysis/dataset_definition.py
+      --output output/extract.arrow
     outputs:
       highly_sensitive:
-        cohort: output/input.feather
+        cohort: output/extract.arrow
 
   km:
-    run: r:latest analysis/km.R
-      --df_input output/input.feather
+    run: r:v2 analysis/km.R
+      --df_input output/extract.arrow
       --dir_output output/km_estimates/
       --exposure sex
-      --subgroups previous_covid_test
-      --origin_date start_date
-      --event_date death_date
-      --censor_date dereg_date
+      --subgroups age_group
+      --origin_date first_vax_date
+      --event_date second_vax_date
+      --censor_date censor_date
       --min_count 6
-      --max_fup 200
-      --fill_times TRUE
+      --max_fup 365
+      --concise TRUE
       --plot FALSE
     needs: [extract]
     outputs:
