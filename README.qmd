@@ -27,6 +27,20 @@ with [the latest tag](https://github.com/opensafely-actions/kaplan-meier-functio
 e.g., `v0.0.1`. Note that no space is allowed between `kaplan-meier-function:` and `[version]`.
 
 
+The arguments to the action are specified using the flags style, i.e., `--argname=argvalue`. The available arguments to this action are as follows:
+
+```{r, echo=FALSE, comment = '', linewidth=80}
+source_lines <- function(file, lines) {
+    source(textConnection(readLines(file)[lines]))
+}
+# Note: in the following command the last line should be the line that
+# creates the opt_parser object using OptionParser(...)
+source_lines("analysis/km.R", 46:93)
+optparse::print_help(opt_parser)
+```
+
+For example, the relevant action in the `project.yaml` file might look something like this:
+
 ```yaml
 
 my_kaplan_meier_function_action:
@@ -39,18 +53,6 @@ my_kaplan_meier_function_action:
       output: output/km_estimates/.*feather
 
 ...
-```
-
-The arguments to the action are specified using the flags style, i.e., `--argname=argvalue`. The available arguments to this action are as follows:
-
-```{r, echo=FALSE, comment = '', linewidth=80}
-source_lines <- function(file, lines) {
-    source(textConnection(readLines(file)[lines]))
-}
-# Note: in the following command the last line should be the line that
-# creates the opt_parser object using OptionParser(...)
-source_lines("analysis/km.R", 46:93)
-optparse::print_help(opt_parser)
 ```
 
 For a more complete example of the arguments this action uses, see [this repo's `project.yaml` file](./project.yaml).

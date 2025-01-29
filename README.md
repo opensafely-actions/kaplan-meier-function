@@ -32,6 +32,62 @@ tag](https://github.com/opensafely-actions/kaplan-meier-function/tags),
 e.g., `v0.0.1`. Note that no space is allowed between
 `kaplan-meier-function:` and `[version]`.
 
+The arguments to the action are specified using the flags style, i.e.,
+`--argname=argvalue`. The available arguments to this action are as
+follows:
+
+    Usage: km:[version] [options]
+
+
+    Options:
+        --df_input=DF_INPUT.FEATHER
+            [default: NULL] character. The input dataset .feather filename. feather format is enforced to ensure date types are preserved.  Must be specified.
+
+        --dir_output=/OUTPUT/
+            [default: NULL] character. The output directory. Must be specified.
+
+        --exposure=EXPOSURE_VARNAME
+            [default: NULL] character. The name of an exposure variable in the input dataset. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same). If not specified, no stratification will occur.
+
+        --subgroups=SUBGROUP_VARNAME
+            character. The name of a subgroup variable or list of variable names. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If not specified, no stratification will occur.
+
+        --origin_date=ORIGIN_VARNAME
+            The name of a date variable (or coercable to a date eg 'YYYY-MM-DD'). The time-origin variable name in the input dataset. Must be specified.
+
+        --event_date=EVENT_VARNAME
+            The name of a date variable (or coercable to a date eg 'YYYY-MM-DD'). The event variable name in the input dataset. Must be specified.
+
+        --censor_date=CENSOR_VARNAME
+            [default: NULL] The name of a date variable (or coercable to a date eg 'YYYY-MM-DD'). If not specified, then no censoring occurs except at `max_fup` time.
+
+        --min_count=MIN_COUNT
+            [default: 6] integer. The minimum permissable event and censor counts for each 'step' in the KM curve. This ensures that at least `min_count` events occur at each event time.
+
+        --method=METHOD
+            [default: constant] character. The interpolation method after rounding. The 'constant' method leaves the event times unchanged after rounding, making the KM curve have bigger, fewer steps. The 'linear' method linearly interpolates between rounded events times (then rounds to the nearest day), so that the steps appear more natural.
+
+        --max_fup=MAX_FUP
+            [default: Inf] numeric. The maximum follow-up time after the origin date. If event variables are dates, then this will be days.
+
+        --smooth=TRUE/FALSE
+            [default: FALSE] logical. Should Kaplan-Meier estimates be smoothed on the log cumulative hazard scale (TRUE) or not (FALSE). 
+
+        --smooth_df=TRUE/FALSE
+            [default: TRUE]. interger. Degrees of freedom to use for the smoother. Unused if smooth=FALSE.
+
+        --concise=TRUE/FALSE
+            [default: TRUE] logical. Should the outputted table only report core variables (defined here as exposure, subgroups, time, number at risk, cumulative number of events, cumulative incidence, and confidence limits) (TRUE) or should it report everything (FALSE)?
+
+        --plot=TRUE/FALSE
+            [default: TRUE] logical. Should Kaplan-Meier plots be created in the output folder? These are fairly basic plots for sense-checking purposes.
+
+        -h, --help
+            Show this help message and exit
+
+For example, the relevant action in the `project.yaml` file might look
+something like this:
+
 ``` yaml
 
 my_kaplan_meier_function_action:
@@ -45,59 +101,6 @@ my_kaplan_meier_function_action:
 
 ...
 ```
-
-The arguments to the action are specified using the flags style, i.e.,
-`--argname=argvalue`. The available arguments to this action are as
-follows:
-
-    Usage: km:[version] [options]
-
-
-    Options:
-        --df_input=FILENAME.FEATHER
-            Input dataset .feather filename [default: NULL]. feather format is enforced to ensure date types are preserved.
-
-        --dir_output=OUTPUT
-            Output directory [default: NULL].
-
-        --exposure=EXPOSURE_VARNAME
-            Exposure variable name in the input dataset [default: NULL]. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same)
-
-        --subgroups=SUBGROUP_VARNAMES
-            Subgroup variable name or list of variable names [default: NULL]. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If NULL, no stratification will occur.
-
-        --origin_date=ORIGIN_VARNAME
-            Time-origin variable name in the input dataset [default: NULL]. Should refer to a date variable, or a character of the form YYYY-MM-DD.
-
-        --event_date=EVENT_VARNAME
-            Event variable name in the input dataset [default: NULL]. Should refer to a date variable, or a character of the form YYYY-MM-DD.
-
-        --censor_date=CENSOR_VARNAME
-            Censor variable name in the input dataset [default: NULL]. Should refer to a date variable, or a character of the form YYYY-MM-DD.
-
-        --min_count=MIN_COUNT
-            The minimum permissable event and censor counts for each 'step' in the KM curve [default: 6]. This ensures that at least `min_count` events occur at each event time.
-
-        --method=METHOD
-            The interpolation method after rounding [default: constant]. The 'constant' method leaves the event times unchanged after rounding, making the KM curve have bigger, fewer steps. The 'linear' method linearly interpolates between rounded events times (then rounds to the nearest day), so that the steps appear more natural.
-
-        --max_fup=MAX_FUP
-            The maximum follow-up time after the origin date. If event variables are dates, then this will be days. [default: Inf]. 
-
-        --smooth=TRUE/FALSE
-            Should Kaplan-Meier estimates be smoothed on the log cumulative hazard scale (TRUE) or not (FALSE) [default: FALSE]. 
-
-        --smooth_df=SMOOTH_DF
-            Degrees of freedom to use for the smoother [default: TRUE]. Unused if smooth=FALSE.
-
-        --concise=TRUE/FALSE
-            Should the outputted table only report core variables (defined here as exposure, subgroups, time, number at risk, cumulative number of events, cumulative incidence, and confidence limits) (TRUE) or should it report everything (FALSE)? [default: TRUE].
-
-        --plot=TRUE/FALSE
-            Should Kaplan-Meier plots be created in the output folder? [default: TRUE]. These are fairly basic plots for sense-checking purposes.
-
-        -h, --help
-            Show this help message and exit
 
 For a more complete example of the arguments this action uses, see [this
 repo’s `project.yaml` file](./project.yaml).

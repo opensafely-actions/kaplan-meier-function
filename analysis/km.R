@@ -46,47 +46,47 @@ if(length(args)==0){
   library("optparse")
 
   option_list <- list(
-    make_option("--df_input", type = "character", default = NULL,
-                help = "Input dataset .feather filename [default: %default]. feather format is enforced to ensure date types are preserved.",
-                metavar = "filename.feather"),
-    make_option("--dir_output", type = "character", default = NULL,
-                help = "Output directory [default: %default].",
-                metavar = "output"),
+    make_option("--df_input", type = "character",
+                help = "[default: %default] character. The input dataset .feather filename. feather format is enforced to ensure date types are preserved.  Must be specified.",
+                metavar = "df_input.feather"),
+    make_option("--dir_output", type = "character",
+                help = "[default: %default] character. The output directory. Must be specified.",
+                metavar = "/output/"),
     make_option("--exposure", type = "character", default = NULL,
-                help = "Exposure variable name in the input dataset [default: %default]. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same)",
+                help = "[default: %default] character. The name of an exposure variable in the input dataset. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same). If not specified, no stratification will occur.",
                 metavar = "exposure_varname"),
     make_option("--subgroups", type = "character", default = NULL,
-                help = "Subgroup variable name or list of variable names [default: %default]. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If NULL, no stratification will occur.",
-                metavar = "subgroup_varnames"),
-    make_option("--origin_date", type = "character", default = NULL,
-                help = "Time-origin variable name in the input dataset [default: %default]. Should refer to a date variable, or a character of the form YYYY-MM-DD.",
+                help = "character. The name of a subgroup variable or list of variable names. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If not specified, no stratification will occur.",
+                metavar = "subgroup_varname"),
+    make_option("--origin_date", type = "character",
+                help = "The name of a date variable (or coercable to a date eg 'YYYY-MM-DD'). The time-origin variable name in the input dataset. Must be specified.",
                 metavar = "origin_varname"),
-    make_option("--event_date", type = "character", default = NULL,
-                help = "Event variable name in the input dataset [default: %default]. Should refer to a date variable, or a character of the form YYYY-MM-DD.",
+    make_option("--event_date", type = "character",
+                help = "The name of a date variable (or coercable to a date eg 'YYYY-MM-DD'). The event variable name in the input dataset. Must be specified.",
                 metavar = "event_varname"),
     make_option("--censor_date", type = "character", default = NULL,
-                help = "Censor variable name in the input dataset [default: %default]. Should refer to a date variable, or a character of the form YYYY-MM-DD.",
+                help = "[default: %default] The name of a date variable (or coercable to a date eg 'YYYY-MM-DD'). If not specified, then no censoring occurs except at `max_fup` time.",
                 metavar = "censor_varname"),
     make_option("--min_count", type = "integer", default = 6,
-                help = "The minimum permissable event and censor counts for each 'step' in the KM curve [default: %default]. This ensures that at least `min_count` events occur at each event time.",
+                help = "[default: %default] integer. The minimum permissable event and censor counts for each 'step' in the KM curve. This ensures that at least `min_count` events occur at each event time.",
                 metavar = "min_count"),
     make_option("--method", type = "character", default = "constant",
-                help = "The interpolation method after rounding [default: %default]. The 'constant' method leaves the event times unchanged after rounding, making the KM curve have bigger, fewer steps. The 'linear' method linearly interpolates between rounded events times (then rounds to the nearest day), so that the steps appear more natural.",
+                help = "[default: %default] character. The interpolation method after rounding. The 'constant' method leaves the event times unchanged after rounding, making the KM curve have bigger, fewer steps. The 'linear' method linearly interpolates between rounded events times (then rounds to the nearest day), so that the steps appear more natural.",
                 metavar = "method"),
     make_option("--max_fup", type = "numeric", default = Inf,
-                help = "The maximum follow-up time after the origin date. If event variables are dates, then this will be days. [default: %default]. ",
+                help = "[default: %default] numeric. The maximum follow-up time after the origin date. If event variables are dates, then this will be days.",
                 metavar = "max_fup"),
     make_option("--smooth", type = "logical", default = FALSE,
-                help = "Should Kaplan-Meier estimates be smoothed on the log cumulative hazard scale (TRUE) or not (FALSE) [default: %default]. ",
+                help = "[default: %default] logical. Should Kaplan-Meier estimates be smoothed on the log cumulative hazard scale (TRUE) or not (FALSE). ",
                 metavar = "TRUE/FALSE"),
     make_option("--smooth_df", type = "logical", default = 4,
-                help = "Degrees of freedom to use for the smoother [default: %default]. Unused if smooth=FALSE.",
-                metavar = "smooth_df"),
+                help = "[default: %default]. interger. Degrees of freedom to use for the smoother. Unused if smooth=FALSE.",
+                metavar = "TRUE/FALSE"),
     make_option("--concise", type = "logical", default = TRUE,
-                help = "Should the outputted table only report core variables (defined here as exposure, subgroups, time, number at risk, cumulative number of events, cumulative incidence, and confidence limits) (TRUE) or should it report everything (FALSE)? [default: %default].",
+                help = "[default: %default] logical. Should the outputted table only report core variables (defined here as exposure, subgroups, time, number at risk, cumulative number of events, cumulative incidence, and confidence limits) (TRUE) or should it report everything (FALSE)?",
                 metavar = "TRUE/FALSE"),
     make_option("--plot", type = "logical", default = TRUE,
-                help = "Should Kaplan-Meier plots be created in the output folder? [default: %default]. These are fairly basic plots for sense-checking purposes.",
+                help = "[default: %default] logical. Should Kaplan-Meier plots be created in the output folder? These are fairly basic plots for sense-checking purposes.",
                 metavar = "TRUE/FALSE")
   )
 
@@ -108,7 +108,6 @@ exposure_syms <- syms(exposure)
 subgroup_syms <- syms(subgroups)
 
 
-
 filename_suffix <- ifelse(
   length(subgroups)==0,
   "",
@@ -128,6 +127,8 @@ data_patients <-
   arrow::read_feather(here::here(df_input)) |>
   mutate(across(.cols = ends_with("_date"), ~ as.Date(.x)))
 
+censor_date0 <- if(length(censor_date)>0) as.Date(data_patients[[censor_date]]) else as.Date(Inf)
+
 ## Derive time to event (tte) variables ----
 data_tte <-
   data_patients |>
@@ -138,10 +139,16 @@ data_tte <-
     !!!subgroup_syms,
     event_date = as.Date(.data[[event_date]]),
     origin_date = as.Date(.data[[origin_date]]),
-    censor_date = pmin(as.Date(.data[[censor_date]]), origin_date + max_fup, na.rm=TRUE),
+    censor_date = pmin(
+      censor_date0,
+      origin_date + max_fup,
+      na.rm=TRUE
+    ),
     event_time = tte(origin_date, event_date, censor_date, na.censor=FALSE),
     event_indicator = censor_indicator(event_date, censor_date),
   )
+
+rm(censor_date0)
 
 if(max_fup==Inf) max_fup <- max(data_tte$event_time)+1
 
