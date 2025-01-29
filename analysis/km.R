@@ -14,7 +14,7 @@ library('here')
 library('glue')
 library('tidyverse')
 library('survival')
-library("optparse")
+
 
 ## import local functions ----
 
@@ -43,72 +43,58 @@ if(length(args)==0){
   plot <- as.logical("FALSE")
 } else {
 
+  library("optparse")
+
   option_list <- list(
     make_option("--df_input", type = "character", default = NULL,
-                help = "Input dataset .feather filename [default %default]. feather format is enforced to ensure date types are preserved.",
+                help = "Input dataset .feather filename [default: %default]. feather format is enforced to ensure date types are preserved.",
                 metavar = "filename.feather"),
     make_option("--dir_output", type = "character", default = NULL,
-                help = "Output directory [default %default].",
+                help = "Output directory [default: %default].",
                 metavar = "output"),
     make_option("--exposure", type = "character", default = NULL,
-                help = "Exposure variable name in the input dataset [default %default]. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same)",
+                help = "Exposure variable name in the input dataset [default: %default]. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same)",
                 metavar = "exposure_varname"),
     make_option("--subgroups", type = "character", default = NULL,
-                help = "Subgroup variable name or list of variable names [default %default]. If subgroups are used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If NULL, no stratification will occur.",
+                help = "Subgroup variable name or list of variable names [default: %default]. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If NULL, no stratification will occur.",
                 metavar = "subgroup_varnames"),
     make_option("--origin_date", type = "character", default = NULL,
-                help = "Time-origin variable name in the input dataset [default %default]. Should refer to a date variable, or a character of the form YYYY-MM-DD.",
+                help = "Time-origin variable name in the input dataset [default: %default]. Should refer to a date variable, or a character of the form YYYY-MM-DD.",
                 metavar = "origin_varname"),
     make_option("--event_date", type = "character", default = NULL,
-                help = "Event variable name in the input dataset [default %default]. Should refer to a date variable, or a character of the form YYYY-MM-DD.",
+                help = "Event variable name in the input dataset [default: %default]. Should refer to a date variable, or a character of the form YYYY-MM-DD.",
                 metavar = "event_varname"),
     make_option("--censor_date", type = "character", default = NULL,
-                help = "Censor variable name in the input dataset [default %default]. Should refer to a date variable, or a character of the form YYYY-MM-DD.",
+                help = "Censor variable name in the input dataset [default: %default]. Should refer to a date variable, or a character of the form YYYY-MM-DD.",
                 metavar = "censor_varname"),
     make_option("--min_count", type = "integer", default = 6,
-                help = "The minimum permissable event and censor counts for each 'step' in the KM curve [default %default]. This ensures that at least `min_count` events occur at each event time.",
+                help = "The minimum permissable event and censor counts for each 'step' in the KM curve [default: %default]. This ensures that at least `min_count` events occur at each event time.",
                 metavar = "min_count"),
     make_option("--method", type = "character", default = "constant",
-                help = "Interpolation method after rounding [default %default]. The 'constant' method leaves the event times unchanged after rounding, making the KM curve have bigger, fewer steps. The 'linear' method linearly interpolates between rounded events times (then rounds to the nearest day), so that the steps appear more natural.",
+                help = "The interpolation method after rounding [default: %default]. The 'constant' method leaves the event times unchanged after rounding, making the KM curve have bigger, fewer steps. The 'linear' method linearly interpolates between rounded events times (then rounds to the nearest day), so that the steps appear more natural.",
                 metavar = "method"),
     make_option("--max_fup", type = "numeric", default = Inf,
-                help = "The maximum time. If event variables are dates, then this will be days. [default %default]. ",
+                help = "The maximum follow-up time after the origin date. If event variables are dates, then this will be days. [default: %default]. ",
                 metavar = "max_fup"),
-    # make_option("--fill_times", type = "logical", default = TRUE,
-    #             help = "Should Kaplan-Meier estimates be provided for all possible event times (TRUE) or just observed event times (FALSE) [default %default]. ",
-    #             metavar = "TRUE/FALSE"),
     make_option("--smooth", type = "logical", default = FALSE,
-                help = "Should Kaplan-Meier estimates be smoothed on the log cumulative hazard scale (TRUE) or not (FALSE) [default %default]. ",
+                help = "Should Kaplan-Meier estimates be smoothed on the log cumulative hazard scale (TRUE) or not (FALSE) [default: %default]. ",
                 metavar = "TRUE/FALSE"),
     make_option("--smooth_df", type = "logical", default = 4,
-                help = "Degrees of freedom to use for the smoother [default %default]. Unused if smooth=FALSE.",
+                help = "Degrees of freedom to use for the smoother [default: %default]. Unused if smooth=FALSE.",
                 metavar = "smooth_df"),
     make_option("--concise", type = "logical", default = TRUE,
-                help = "Should the outputted table only report core variables (defined here as exposure, subgroups, time, number at risk, cumulative number of events, cumulative incidence, and confidence limits) (TRUE) or should it report everything (FALSE)? [default %default]. ",
+                help = "Should the outputted table only report core variables (defined here as exposure, subgroups, time, number at risk, cumulative number of events, cumulative incidence, and confidence limits) (TRUE) or should it report everything (FALSE)? [default: %default].",
                 metavar = "TRUE/FALSE"),
     make_option("--plot", type = "logical", default = TRUE,
-                help = "Should Kaplan-Meier plots be created in the output folder? [default %default]. These are fairly basic plots for sense-checking purposes.",
+                help = "Should Kaplan-Meier plots be created in the output folder? [default: %default]. These are fairly basic plots for sense-checking purposes.",
                 metavar = "TRUE/FALSE")
   )
 
   opt_parser <- OptionParser(usage = "km:[version] [options]", option_list = option_list)
-  opt <- parse_args(opt_parser)
 
-  df_input <- opt$df_input
-  dir_output <- opt$dir_output
-  exposure <- opt$exposure
-  subgroups <- opt$subgroups
-  origin_date <- opt$origin_date
-  event_date <- opt$event_date
-  censor_date <- opt$censor_date
-  min_count <- opt$min_count
-  method <- opt$method
-  max_fup <- opt$max_fup
-  #fill_times <- opt$fill_times
-  smooth <- opt$smooth
-  smooth_df <- opt$smooth_df
-  concise <- opt$concise
-  plot <- opt$plot
+  opt <- parse_args(opt_parser)
+  list2env(opt, .GlobalEnv)
+
 }
 
 

@@ -1,0 +1,71 @@
+---
+format:
+  gfm
+  
+---
+
+<!-- README.md is generated from the README.qmd file. 
+Please edit that file and re-render in R `....` -->
+
+
+# kaplan-meier-function
+
+This is the code and configuration for `kaplan-meier-function`, an R reusable action for the OpenSAFELY framework.
+
+This action uses the Kaplan-Meier estimator to calculate the cumulative incidence of an event over time, from a given origin date, possibly stratified by an exposure variable and/or a subgroup variable. Event times may be censored. 
+
+There is EXPERIMENTAL support for statistical disclosure control in the action, with further assurance tests and methodological explanations pending. 
+We recommend comparing rounded KM estimates to the unrounded KM estimates (prior to release) to ensure that the rounded estimates are a sensible approximation. 
+
+Additional arguments provide control over smoothing, maximum follow-up duration, plotting, and other options -- a full list of available arguments is given below.
+
+
+## Usage
+
+This action should be specified in the `project.yaml` file of your OpenSAFELY study repository, where you should replace `[version]`
+with [the latest tag](https://github.com/opensafely-actions/kaplan-meier-function/tags),
+e.g., `v0.0.1`. Note that no space is allowed between `kaplan-meier-function:` and `[version]`.
+
+
+```yaml
+
+my_kaplan_meier_function_action:
+  run: kaplan-meier-function:v0.0.1
+    --df_input=cohort.csv
+    --df_output=output/km_estimates.csv
+    ...# more arguments here
+  outputs:
+    highly_sensitive:
+      output: output/km_estimates/.*feather
+
+...
+```
+
+The arguments to the action are specified using the flags style, i.e., `--argname=argvalue`. The available arguments to this action are as follows:
+
+```{r, echo=FALSE, comment = '', linewidth=80}
+source_lines <- function(file, lines) {
+    source(textConnection(readLines(file)[lines]))
+}
+# Note: in the following command the last line should be the line that
+# creates the opt_parser object using OptionParser(...)
+source_lines("analysis/km.R", 46:93)
+optparse::print_help(opt_parser)
+```
+
+For a more complete example of the arguments this action uses, see [this repo's `project.yaml` file](./project.yaml).
+
+The main script for this action is [`analyis/km.R`](./analysis/km.R).
+
+
+# About the OpenSAFELY framework
+
+The OpenSAFELY framework is a Trusted Research Environment (TRE) for electronic
+health records research in the NHS, with a focus on public accountability and
+research quality.
+
+Read more at [OpenSAFELY.org](https://opensafely.org).
+
+# Licences
+
+As standard, research projects have a MIT license.
