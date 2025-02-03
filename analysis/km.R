@@ -52,10 +52,10 @@ if(length(args)==0){
     make_option("--dir_output", type = "character",
                 help = "[default: %default] character. The output directory. Must be specified.",
                 metavar = "/output/"),
-    make_option("--exposure", type = "character", default = NULL,
+    make_option("--exposure", type = "character", default = character(),
                 help = "[default: %default] character. The name of an exposure variable in the input dataset. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same). If not specified, no stratification will occur.",
                 metavar = "exposure_varname"),
-    make_option("--subgroups", type = "character", default = NULL,
+    make_option("--subgroups", type = "character", default = character(),
                 help = "character. The name of a subgroup variable or list of variable names. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If not specified, no stratification will occur.",
                 metavar = "subgroup_varname"),
     make_option("--origin_date", type = "character",
@@ -64,7 +64,7 @@ if(length(args)==0){
     make_option("--event_date", type = "character",
                 help = "The name of a date variable (or coercable to a date eg 'YYYY-MM-DD'). The event variable name in the input dataset. Must be specified.",
                 metavar = "event_varname"),
-    make_option("--censor_date", type = "character", default = NULL,
+    make_option("--censor_date", type = "character", default = as.Date(Inf),
                 help = "[default: %default] The name of a date variable (or coercable to a date eg 'YYYY-MM-DD'). If not specified, then no censoring occurs except at `max_fup` time.",
                 metavar = "censor_varname"),
     make_option("--min_count", type = "integer", default = 6,
@@ -90,7 +90,10 @@ if(length(args)==0){
                 metavar = "TRUE/FALSE")
   )
 
-  opt_parser <- OptionParser(usage = "km:[version] [options]", option_list = option_list)
+  opt_parser <- OptionParser(
+    usage = "kaplan-meier-function:[version] [options]",
+    option_list = option_list
+  )
 
   opt <- parse_args(opt_parser)
   list2env(opt, .GlobalEnv)
@@ -103,7 +106,7 @@ if(length(args)==0){
 # use `syms()` instead of `sym()`
 # even though it's possible to pull only one exposure or subgroup variable is from the args (without hacking!)
 # this ensures that if `exposure` or `subgroups` is not used, the quasiquotation still works inside ggplot, transmute, etc
-exposure_sym <- sym(exposure)
+
 exposure_syms <- syms(exposure)
 subgroup_syms <- syms(subgroups)
 
@@ -127,8 +130,6 @@ data_patients <-
   arrow::read_feather(here::here(df_input)) |>
   mutate(across(.cols = ends_with("_date"), ~ as.Date(.x)))
 
-censor_date0 <- if(length(censor_date)>0) as.Date(data_patients[[censor_date]]) else as.Date(Inf)
-
 ## Derive time to event (tte) variables ----
 data_tte <-
   data_patients |>
@@ -140,15 +141,13 @@ data_tte <-
     event_date = as.Date(.data[[event_date]]),
     origin_date = as.Date(.data[[origin_date]]),
     censor_date = pmin(
-      censor_date0,
+      censor_date,
       origin_date + max_fup,
       na.rm=TRUE
     ),
     event_time = tte(origin_date, event_date, censor_date, na.censor=FALSE),
     event_indicator = censor_indicator(event_date, censor_date),
   )
-
-rm(censor_date0)
 
 if(max_fup==Inf) max_fup <- max(data_tte$event_time)+1
 
@@ -364,6 +363,7 @@ if(plot){
     ggplot_init <- if(length(exposure)==0L){
       ggplot(data_with_time0)
     } else {
+      exposure_sym <- sym(exposure)
       ggplot(data_with_time0, aes(group = !!exposure_sym, colour = !!exposure_sym, fill = !!exposure_sym))
     }
 
