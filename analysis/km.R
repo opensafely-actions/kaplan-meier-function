@@ -59,13 +59,13 @@ if(length(args)==0){
                 help = "character. The name of a subgroup variable or list of variable names. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If not specified, no stratification will occur.",
                 metavar = "subgroup_varname"),
     make_option("--origin_date", type = "character",
-                help = "The name of a date variable (or coercable to a date eg 'YYYY-MM-DD'). The time-origin variable name in the input dataset. Must be specified.",
+                help = "The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the start of follow-up. Must be specified.",
                 metavar = "origin_varname"),
     make_option("--event_date", type = "character",
-                help = "The name of a date variable (or coercable to a date eg 'YYYY-MM-DD'). The event variable name in the input dataset. Must be specified.",
+                help = "The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the event date. Must be specified.",
                 metavar = "event_varname"),
-    make_option("--censor_date", type = "character", default = as.Date(Inf),
-                help = "[default: %default] The name of a date variable (or coercable to a date eg 'YYYY-MM-DD'). If not specified, then no censoring occurs except at `max_fup` time.",
+    make_option("--censor_date", type = "character", default = character(),
+                help = "[default: %default] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') that represents the censoring date. If not specified, then no censoring occurs except at `max_fup` time.",
                 metavar = "censor_varname"),
     make_option("--min_count", type = "integer", default = 6,
                 help = "[default: %default] integer. The minimum permissable event and censor counts for each 'step' in the KM curve. This ensures that at least `min_count` events occur at each event time.",
@@ -80,7 +80,7 @@ if(length(args)==0){
                 help = "[default: %default] logical. Should Kaplan-Meier estimates be smoothed on the log cumulative hazard scale (TRUE) or not (FALSE). ",
                 metavar = "TRUE/FALSE"),
     make_option("--smooth_df", type = "logical", default = 4,
-                help = "[default: %default]. interger. Degrees of freedom to use for the smoother. Unused if smooth=FALSE.",
+                help = "[default: %default]. integer. Degrees of freedom to use for the smoother. Unused if smooth=FALSE.",
                 metavar = "TRUE/FALSE"),
     make_option("--concise", type = "logical", default = TRUE,
                 help = "[default: %default] logical. Should the outputted table only report core variables (defined here as exposure, subgroups, time, number at risk, cumulative number of events, cumulative incidence, and confidence limits) (TRUE) or should it report everything (FALSE)?",
@@ -99,6 +99,8 @@ if(length(args)==0){
   list2env(opt, .GlobalEnv)
 
 }
+
+
 
 
 # Use quasiquotation for passing exposure and subgroup stratification variables
@@ -127,10 +129,16 @@ fs::dir_create(dir_output)
 
 ## Import ----
 data_patients <-
-  arrow::read_feather(here::here(df_input)) |>
-  mutate(across(.cols = ends_with("_date"), ~ as.Date(.x)))
+  arrow::read_feather(here::here(df_input))
 
 ## Derive time to event (tte) variables ----
+
+if(length(censor_date)==0) {
+  # censor date is not specified, then create a censor_date variable in the dataset, taking value `as.Date(Inf)`
+  data_patients$censor_date <- as.Date(Inf)
+  censor_date <- "censor_date"
+}
+
 data_tte <-
   data_patients |>
   transmute(
@@ -141,7 +149,7 @@ data_tte <-
     event_date = as.Date(.data[[event_date]]),
     origin_date = as.Date(.data[[origin_date]]),
     censor_date = pmin(
-      censor_date,
+      as.Date(.data[[censor_date]]),
       origin_date + max_fup,
       na.rm=TRUE
     ),
