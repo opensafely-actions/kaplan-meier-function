@@ -36,7 +36,7 @@ The arguments to the action are specified using the flags style, i.e.,
 `--argname=argvalue`. The available arguments to this action are as
 follows:
 
-    Usage: km:[version] [options]
+    Usage: kaplan-meier-function:[version] [options]
 
 
     Options:
@@ -47,19 +47,19 @@ follows:
             [default: NULL] character. The output directory. Must be specified.
 
         --exposure=EXPOSURE_VARNAME
-            [default: NULL] character. The name of an exposure variable in the input dataset. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same). If not specified, no stratification will occur.
+            [default: character(0)] character. The name of an exposure variable in the input dataset. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same). If not specified, no stratification will occur.
 
         --subgroups=SUBGROUP_VARNAME
             character. The name of a subgroup variable or list of variable names. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If not specified, no stratification will occur.
 
         --origin_date=ORIGIN_VARNAME
-            The name of a date variable (or coercable to a date eg 'YYYY-MM-DD'). The time-origin variable name in the input dataset. Must be specified.
+            The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the start of follow-up. Must be specified.
 
         --event_date=EVENT_VARNAME
-            The name of a date variable (or coercable to a date eg 'YYYY-MM-DD'). The event variable name in the input dataset. Must be specified.
+            The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the event date. Must be specified.
 
         --censor_date=CENSOR_VARNAME
-            [default: NULL] The name of a date variable (or coercable to a date eg 'YYYY-MM-DD'). If not specified, then no censoring occurs except at `max_fup` time.
+            [default: character(0)] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') that represents the censoring date. If not specified, then no censoring occurs except at `max_fup` time.
 
         --min_count=MIN_COUNT
             [default: 6] integer. The minimum permissable event and censor counts for each 'step' in the KM curve. This ensures that at least `min_count` events occur at each event time.
@@ -74,7 +74,7 @@ follows:
             [default: FALSE] logical. Should Kaplan-Meier estimates be smoothed on the log cumulative hazard scale (TRUE) or not (FALSE). 
 
         --smooth_df=TRUE/FALSE
-            [default: TRUE]. interger. Degrees of freedom to use for the smoother. Unused if smooth=FALSE.
+            [default: TRUE]. integer. Degrees of freedom to use for the smoother. Unused if smooth=FALSE.
 
         --concise=TRUE/FALSE
             [default: TRUE] logical. Should the outputted table only report core variables (defined here as exposure, subgroups, time, number at risk, cumulative number of events, cumulative incidence, and confidence limits) (TRUE) or should it report everything (FALSE)?
