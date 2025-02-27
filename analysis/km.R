@@ -47,8 +47,8 @@ if(length(args)==0){
 
   option_list <- list(
     make_option("--df_input", type = "character",
-                help = "[default: %default] character. The input dataset .feather filename. feather format is enforced to ensure date types are preserved.  Must be specified.",
-                metavar = "df_input.feather"),
+                help = "[default: %default] character. The input dataset .arrow filename. feather/arrow format is enforced to ensure date types are preserved.  Must be specified.",
+                metavar = "df_input.arrow"),
     make_option("--dir_output", type = "character",
                 help = "[default: %default] character. The output directory. Must be specified.",
                 metavar = "/output/"),
@@ -273,8 +273,14 @@ round_km <- function(.data, min_count, method="constant") {
 data_surv_unrounded <- round_km(data_surv, 1)
 data_surv_rounded <- round_km(data_surv, min_count, method=method)
 
-## write to disk
-arrow::write_feather(data_surv_rounded, fs::path(dir_output, glue("km_estimates{filename_suffix}.feather")))
+## output to disk
+## include both arrow and csvv formats here - if you don't want one of them,
+## don't include it in the `output:` slot in the action
+
+## write arrow to disk
+arrow::write_feather(data_surv_rounded, fs::path(dir_output, glue("km_estimates{filename_suffix}.arrow")))
+## write csv to disk
+write_csv(data_surv_rounded, fs::path(dir_output, glue("km_estimates{filename_suffix}.csv")))
 
 if(smooth){
   # smooth the KM curve on the complementary log-log scale (ie, smooth the log cumulative hazard)
@@ -350,7 +356,7 @@ if(smooth){
   ## don't include it in the `output:` slot in the action
 
   ## write arrow to disk
-  arrow::write_feather(data_surv_smoothed, fs::path(dir_output, glue("km_estimates{filename_suffix}.feather")))
+  arrow::write_feather(data_surv_smoothed, fs::path(dir_output, glue("km_estimates{filename_suffix}.arrow")))
   ## write csv to disk
   write_csv(data_surv_smoothed, fs::path(dir_output, glue("km_estimates{filename_suffix}.csv")))
 }
