@@ -343,9 +343,16 @@ if(smooth){
         n.risk,
         cmlinc, cmlinc.low, cmlinc.high
       )
-    }
-    ## write to disk
-    arrow::write_feather(data_surv_smoothed, fs::path(dir_output, glue("km_estimates{filename_suffix}.feather")))
+  }
+
+  ## output to disk
+  ## include both arrow and csvv formats here - if you don't want one of them,
+  ## don't include it in the `output:` slot in the action
+
+  ## write arrow to disk
+  arrow::write_feather(data_surv_smoothed, fs::path(dir_output, glue("km_estimates{filename_suffix}.feather")))
+  ## write csv to disk
+  write_csv(data_surv_smoothed, fs::path(dir_output, glue("km_estimates{filename_suffix}.csv")))
 }
 
 if(plot){

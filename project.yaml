@@ -29,5 +29,8 @@ actions:
     outputs:
       highly_sensitive:
         feather: output/km_estimates/*.feather
+      moderately_sensitive:
+        csv: output/km_estimates/*.csv
         #png: output/km_estimates/*.png
+
 
