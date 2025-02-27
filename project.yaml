@@ -28,6 +28,9 @@ actions:
     needs: [extract]
     outputs:
       highly_sensitive:
-        feather: output/km_estimates/*.feather
+        feather: output/km_estimates/*.arrow
+      moderately_sensitive:
+        csv: output/km_estimates/*.csv
         #png: output/km_estimates/*.png
+
 
