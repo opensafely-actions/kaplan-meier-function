@@ -40,8 +40,8 @@ follows:
 
 
     Options:
-        --df_input=DF_INPUT.FEATHER
-            [default: NULL] character. The input dataset .feather filename. feather format is enforced to ensure date types are preserved.  Must be specified.
+        --df_input=DF_INPUT.ARROW
+            [default: NULL] character. The input dataset .arrow filename. feather/arrow format is enforced to ensure date types are preserved.  Must be specified.
 
         --dir_output=/OUTPUT/
             [default: NULL] character. The output directory. Must be specified.
@@ -60,6 +60,9 @@ follows:
 
         --censor_date=CENSOR_VARNAME
             [default: character(0)] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') that represents the censoring date. If not specified, then no censoring occurs except at `max_fup` time.
+
+        --weight=CENSOR_VARNAME
+            [default: character(0)] The name of a numeric variable that represents balancing / sampling weights. If not specified, then no weighting occurs.
 
         --min_count=MIN_COUNT
             [default: 6] integer. The minimum permissable event and censor counts for each 'step' in the KM curve. This ensures that at least `min_count` events occur at each event time.

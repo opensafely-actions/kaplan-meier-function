@@ -33,6 +33,7 @@ if(length(args)==0){
   origin_date <- "first_vax_date"
   event_date <- "second_vax_date"
   censor_date <- "censor_date"
+  weight <- character()
   min_count <- as.integer("6")
   method <- "constant"
   max_fup <- as.numeric("365")
@@ -66,6 +67,9 @@ if(length(args)==0){
                 metavar = "event_varname"),
     make_option("--censor_date", type = "character", default = character(),
                 help = "[default: %default] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') that represents the censoring date. If not specified, then no censoring occurs except at `max_fup` time.",
+                metavar = "censor_varname"),
+    make_option("--weight", type = "character", default = character(),
+                help = "[default: %default] The name of a numeric variable that represents balancing / sampling weights. If not specified, then no weighting occurs.",
                 metavar = "censor_varname"),
     make_option("--min_count", type = "integer", default = 6,
                 help = "[default: %default] integer. The minimum permissable event and censor counts for each 'step' in the KM curve. This ensures that at least `min_count` events occur at each event time.",
@@ -101,8 +105,6 @@ if(length(args)==0){
 }
 
 
-
-
 # Use quasiquotation for passing exposure and subgroup stratification variables
 # around the place
 # use `syms()` instead of `sym()`
@@ -111,7 +113,6 @@ if(length(args)==0){
 
 exposure_syms <- syms(exposure)
 subgroup_syms <- syms(subgroups)
-
 
 filename_suffix <- ifelse(
   length(subgroups)==0,
@@ -134,18 +135,29 @@ data_patients <-
 ## Derive time to event (tte) variables ----
 
 if(length(censor_date)==0) {
-  # censor date is not specified, then create a censor_date variable in the dataset, taking value `as.Date(Inf)`
+  # if censor date is not specified, then create a censor_date variable in the dataset, taking value `as.Date(Inf)`
   data_patients$censor_date <- as.Date(Inf)
   censor_date <- "censor_date"
 }
 
+is.weighted <- length(weight)>0
+if(!is.weighted) {
+  # if weight is not specified, then create a weight variable in the dataset, taking value `1L`
+  data_patients$.weight <- 1L
+  weight <- ".weight"
+}
+
 data_tte <-
   data_patients |>
+  mutate(
+    weights=rnorm(n(),1,0.1)
+  ) |>
   transmute(
     patient_id,
     .all = TRUE,
     !!!exposure_syms,
     !!!subgroup_syms,
+    .weight = .data[[weight]],
     event_date = as.Date(.data[[event_date]]),
     origin_date = as.Date(.data[[origin_date]]),
     censor_date = pmin(
@@ -182,13 +194,18 @@ data_surv <-
   tidyr::nest() |>
   dplyr::mutate(
     surv_obj_tidy = purrr::map(data, ~ {
-      survival::survfit(survival::Surv(event_time, event_indicator) ~ 1, data = .x, conf.type="log-log") |>
-        broom::tidy() |>
-        tidyr::complete(
-          time = seq_len(max_fup), # fill in 1 row for each day of follow up
-          fill = list(n.event = 0L, n.censor = 0L) # fill in zero events on those days
-        ) |>
-        tidyr::fill(n.risk, .direction = c("up"))
+      survival::survfit(
+        survival::Surv(event_time, event_indicator) ~ 1,
+        data = .x,
+        conf.type="log-log",
+        weight = .weight
+      ) |>
+      broom::tidy() |>
+      tidyr::complete(
+        time = seq_len(max_fup), # fill in 1 row for each day of follow up
+        fill = list(n.event = 0L, n.censor = 0L) # fill in zero events on those days
+      ) |>
+      tidyr::fill(n.risk, .direction = c("up"))
     }),
   ) |>
   select(-data) |>
@@ -198,23 +215,45 @@ data_surv <-
 # round event times such that no event time has fewer than `min_count` events
 # recalculate KM estimates based on these rounded event times
 
-round_km <- function(.data, min_count, method="constant") {
-  rounded_data <-
-    .data |>
+round_km <- function(.data, min_count=0, method="constant") {
+
+  # min_count == 0 means no rounding.
+  # precision is 0 rather than 1 because if using weighting, then
+  # there may be non-integer counts
+  if(min_count==0){
+    rounded_data <-
+      .data |>
+      mutate(
+        N = max(n.risk, na.rm = TRUE),
+        # rounded to `min_count - (min_count/2)`
+        cml.event = cumsum(n.event),
+        cml.censor = cumsum(n.censor),
+        cml.eventcensor = cml.event + cml.censor,
+      )
+  } else {
+    rounded_data <-
+      .data |>
+      mutate(
+        N = max(n.risk, na.rm = TRUE),
+        # rounded to `min_count - (min_count/2)`
+        cml.event = round_cmlcount(cumsum(n.event), time, min_count, method, integer.counts = !is.weighted),
+        cml.censor = round_cmlcount(cumsum(n.censor), time, min_count, method, integer.counts = !is.weighted),
+        cml.eventcensor = cml.event + cml.censor,
+        # re-derive counts from cumulative data
+        n.event = diff(c(0, cml.event)),
+        n.censor = diff(c(0, cml.censor)),
+        n.risk = roundmid_any(N, min_count) - lag(cml.eventcensor, 1, 0)
+      )
+  }
+
+  rounded_data1 <-
+    rounded_data |>
     mutate(
-      N = max(n.risk, na.rm = TRUE),
-      # rounded to `min_count - (min_count/2)`
-      cml.event = round_cmlcount(cumsum(n.event), time, min_count, method),
-      cml.censor = round_cmlcount(cumsum(n.censor), time, min_count, method),
-      cml.eventcensor = cml.event + cml.censor,
-      n.event = diff(c(0, cml.event)),
-      n.censor = diff(c(0, cml.censor)),
-      n.risk = roundmid_any(N, min_count) - lag(cml.eventcensor, 1, 0),
       # KM estimate for event of interest, combining censored and competing events as censored
       summand = (1 / (n.risk - n.event)) - (1 / n.risk), # = n.event / ((n.risk - n.event) * n.risk) but re-written to prevent integer overflow
       surv = cumprod(1 - n.event / n.risk),
       # standard errors on survival scale
-      surv.se = surv * sqrt(cumsum(summand)), # greenwood's formula
+      surv.se = surv * sqrt(cumsum(summand)),# greenwood's formula
       # surv.low = surv + qnorm(0.025)*surv.se,
       # surv.high = surv + qnorm(0.975)*surv.se,
       ## standard errors on log scale
@@ -256,7 +295,7 @@ round_km <- function(.data, min_count, method="constant") {
     )
 
   if(concise){
-    rounded_data %>% select(
+    rounded_data1 %>% select(
       !!!subgroup_syms,
       !!!exposure_syms,
       time,
@@ -265,12 +304,11 @@ round_km <- function(.data, min_count, method="constant") {
       cmlinc, cmlinc.low, cmlinc.high
     )
   } else {
-    rounded_data
+    rounded_data1
   }
 }
 
-
-data_surv_unrounded <- round_km(data_surv, 1)
+data_surv_unrounded <- round_km(data_surv, 0L)
 data_surv_rounded <- round_km(data_surv, min_count, method=method)
 
 ## output to disk
@@ -292,16 +330,21 @@ if(smooth){
     tidyr::nest() |>
     dplyr::mutate(
       surv_obj = purrr::map(data, ~ {
-        stpm2(survival::Surv(event_time, event_indicator) ~ 1, data = .x, df=smooth_df)
+        stpm2(
+          survival::Surv(event_time, event_indicator) ~ 1,
+          data = .x,
+          df = smooth_df,
+          weights = .weight
+        )
       }),
       surv_smooth = purrr::map(surv_obj, ~ {
         new_data <- data.frame(event_time=seq_len(max_fup))
         surv_predict <- predict(
           .x,
-          newdata=new_data,
-          type="surv",
-          level=0.95,
-          se.fit=TRUE
+          newdata = new_data,
+          type = "surv",
+          level = 0.95,
+          se.fit = TRUE
         )
         # not yet available as "rmst currently only for single value"
         # rmst_predict <- predict(
@@ -313,10 +356,10 @@ if(smooth){
         # )
         hazard_predict <- predict(
           .x,
-          newdata=new_data,
-          type="hazard",
-          level=0.95,
-          se.fit=TRUE
+          newdata = new_data,
+          type = "hazard",
+          level = 0.95,
+          se.fit = TRUE
         )
         tibble(
           time = seq_len(max_fup),
@@ -420,5 +463,6 @@ if(plot){
     ggsave(filename = fs::path(dir_output, glue("km_plot_smoothed{filename_suffix}.png")), km_plot_smoothed, width = 20, height = 20, units = "cm")
   }
 }
+
 
 
