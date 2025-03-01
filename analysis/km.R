@@ -28,16 +28,15 @@ if(length(args)==0){
   # use for interactive testing
   df_input <- "output/extract.arrow"
   dir_output <- "output/km_estimates/"
-  exposure <- c("sex")
+  exposure <- c()
   subgroups <- c("age_group")
   origin_date <- "first_vax_date"
   event_date <- "second_vax_date"
-  censor_date <- "censor_date"
-  weight <- character()
+  censor_date <- c() # "censor_date"
+  weight <- NULL
   min_count <- as.integer("6")
   method <- "constant"
   max_fup <- as.numeric("365")
-  #fill_times <- as.logical("TRUE")
   smooth <- as.logical("FALSE")
   smooth_df <- as.integer("4")
   concise <- as.logical("TRUE")
@@ -53,10 +52,10 @@ if(length(args)==0){
     make_option("--dir_output", type = "character",
                 help = "[default: %default] character. The output directory. Must be specified.",
                 metavar = "/output/"),
-    make_option("--exposure", type = "character", default = character(),
-                help = "[default: %default] character. The name of an exposure variable in the input dataset. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same). If not specified, no stratification will occur.",
+    make_option("--exposure", type = "character", default = NULL,
+                help = "[default: %default] character. The name of an exposure variable in the input dataset. Must be binary or not given. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same). If not specified, no stratification will occur.",
                 metavar = "exposure_varname"),
-    make_option("--subgroups", type = "character", default = character(),
+    make_option("--subgroups", type = "character", default = NULL,
                 help = "character. The name of a subgroup variable or list of variable names. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If not specified, no stratification will occur.",
                 metavar = "subgroup_varname"),
     make_option("--origin_date", type = "character",
@@ -65,10 +64,10 @@ if(length(args)==0){
     make_option("--event_date", type = "character",
                 help = "The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the event date. Must be specified.",
                 metavar = "event_varname"),
-    make_option("--censor_date", type = "character", default = character(),
+    make_option("--censor_date", type = "character", default = NULL,
                 help = "[default: %default] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') that represents the censoring date. If not specified, then no censoring occurs except at `max_fup` time.",
                 metavar = "censor_varname"),
-    make_option("--weight", type = "character", default = character(),
+    make_option("--weight", type = "character", default = NULL,
                 help = "[default: %default] The name of a numeric variable that represents balancing / sampling weights. If not specified, then no weighting occurs.",
                 metavar = "censor_varname"),
     make_option("--min_count", type = "integer", default = 6,
@@ -120,19 +119,20 @@ filename_suffix <- ifelse(
   glue("-{subgroups}")
 )
 
-# create output directories ----
+# Create output directories ----
 
 dir_output <- here::here(dir_output)
 fs::dir_create(dir_output)
 
 
-# import and process person-level data  ----
+# Import and process person-level data  ----
 
 ## Import ----
 data_patients <-
   arrow::read_feather(here::here(df_input))
 
-## Derive time to event (tte) variables ----
+
+## Derive variables ----
 
 if(length(censor_date)==0) {
   # if censor date is not specified, then create a censor_date variable in the dataset, taking value `as.Date(Inf)`
@@ -173,21 +173,54 @@ if(max_fup==Inf) max_fup <- max(data_tte$event_time)+1
 
 ## tests ----
 
+if(length(exposure)>0){
+  stopifnot("exposure variable must be binary or have two levels" = (length(unique(data_patients[[exposure]])) == 2))
+}
+
 stopifnot("censoring dates must be non-missing" = all(!is.na(data_tte$censor_date)))
 
 stopifnot("origin dates must be non-missing" = all(!is.na(data_tte$origin_date)))
 
 times_count <- table(cut(data_tte$event_time, c(-Inf, 0, 1, Inf), right=FALSE, labels= c("<0", "0", ">0")), useNA="ifany")
+
 if(!identical(as.integer(times_count), c(0L, 0L, nrow(data_tte)))) {
   print(times_count)
   stop("all event times must be strictly positive")
 }
 
+# Calculate max follow-up time available in the data ----
+# and print to log file
 
-# Get KM estimates ------
+if(length(exposure)>0){
+  max_time_data <-
+    data_tte |>
+    group_by(!!!exposure_syms) |>
+    summarise(
+      max_fup_time = max(event_time),
+      max_event_time = max(event_time[event_indicator])
+    )
+
+  cat("maximum follow-up time in exposure levels [", paste0(max_time_data[[exposure]], collapse=", "), "] is [", paste0(max_time_data$max_fup_time, collapse= ", "), "]")
+  cat("maximum event time in exposure levels [", paste0(max_time_data[[exposure]], collapse=", "), "] is [", paste0(max_time_data$max_event_time, collapse= ", "), "]")
+} else {
+  max_time_data <-
+    data_tte |>
+    summarise(
+      max_fup_time = max(event_time),
+      max_event_time = max(event_time[event_indicator])
+    )
+  cat("maximum follow-up time is [", paste0(max_time_data$max_fup_time, collapse= ", "), "]")
+  cat("maximum event time is [", paste0(max_time_data$max_event_time, collapse= ", "), "]")
+}
 
 
-# for each exposure level and subgroup level, pass data through `survival::Surv` to get KM table
+# Calculate KM estimates ------
+
+## Run `survfit` across each level of exposure and subgroup ----
+## do this independently rather than using stratification or covariates
+## because it makes variable name handling easier
+
+# for each exposure level and subgroup level, pass data through `survival::survfit` to get KM table
 data_surv <-
   data_tte |>
   dplyr::group_by(!!!subgroup_syms, !!!exposure_syms) |>
@@ -212,6 +245,7 @@ data_surv <-
   tidyr::unnest(surv_obj_tidy)
 
 
+## Round the count values in the survival data ----
 # round event times such that no event time has fewer than `min_count` events
 # recalculate KM estimates based on these rounded event times
 
@@ -249,6 +283,9 @@ round_km <- function(.data, min_count=0, method="constant") {
   rounded_data1 <-
     rounded_data |>
     mutate(
+      cml.nrisk = cumsum(n.risk),
+      cml.rate = cml.event / cml.nrisk,
+      inc = n.event / n.risk,
       # KM estimate for event of interest, combining censored and competing events as censored
       summand = (1 / (n.risk - n.event)) - (1 / n.risk), # = n.event / ((n.risk - n.event) * n.risk) but re-written to prevent integer overflow
       surv = cumprod(1 - n.event / n.risk),
@@ -287,45 +324,59 @@ round_km <- function(.data, min_count=0, method="constant") {
       !!!subgroup_syms,
       !!!exposure_syms,
       time,
-      cml.event, cml.censor,
+      cml.nrisk, cml.event, cml.censor,
       n.risk, n.event, n.censor,
+      inc,
       #surv, surv.se, surv.low, surv.high,
+      cml.rate,
       cmlinc, cmlinc.se, cmlinc.low, cmlinc.high,
       rmst, rmst.se, rmst.low, rmst.high,
     )
 
-  if(concise){
-    rounded_data1 %>% select(
-      !!!subgroup_syms,
-      !!!exposure_syms,
-      time,
-      cml.event,
-      n.risk,
-      cmlinc, cmlinc.low, cmlinc.high
-    )
-  } else {
-    rounded_data1
-  }
+  rounded_data1
 }
 
 data_surv_unrounded <- round_km(data_surv, 0L)
 data_surv_rounded <- round_km(data_surv, min_count, method=method)
 
-## output to disk
+## Select a smaller set of variable ----
+## if requested via concise argument
+
+data_surv_rounded_output <-
+  if(concise){
+    data_surv_rounded |>
+    select(
+      !!!subgroup_syms,
+      !!!exposure_syms,
+      time,
+      n.risk, n.censor, n.event,
+      cml.event,
+      cmlinc, cmlinc.low, cmlinc.high
+    )
+  } else {
+    data_surv_rounded_output <- data_surv_rounded
+  }
+
+
+## output to disk ----
 ## include both arrow and csvv formats here - if you don't want one of them,
 ## don't include it in the `output:` slot in the action
 
 ## write arrow to disk
-arrow::write_feather(data_surv_rounded, fs::path(dir_output, glue("km_estimates{filename_suffix}.arrow")))
+arrow::write_feather(data_surv_rounded_output, fs::path(dir_output, glue("km_estimates{filename_suffix}.arrow")))
 ## write csv to disk
-write_csv(data_surv_rounded, fs::path(dir_output, glue("km_estimates{filename_suffix}.csv")))
+write_csv(data_surv_rounded_output, fs::path(dir_output, glue("km_estimates{filename_suffix}.csv")))
 
-if(smooth){
+
+# Smoothing via parametric survival ----
+## if requested via `smooth` argument
+
+smooth_km <- function(.data, smooth_df){
   # smooth the KM curve on the complementary log-log scale (ie, smooth the log cumulative hazard)
   # using rtpm2 package
   library('rstpm2')
-  data_surv_smoothed <-
-    data_tte |>
+  data_smoothed <-
+    .data |>
     dplyr::group_by(!!!subgroup_syms, !!!exposure_syms) |>
     tidyr::nest() |>
     dplyr::mutate(
@@ -366,10 +417,13 @@ if(smooth){
           surv = surv_predict$Estimate,
           surv.low = surv_predict$lower,
           surv.high = surv_predict$upper,
+          inc = n.event / n.risk,
+          cml.nrisk = cumsum(n.risk),
+          cml.rate = cml.event / cml.n.risk,
           cmlinc = 1 - surv,
           cmlinc.low = 1 - surv.high,
           cmlinc.high = 1 - surv.low,
-          rmst = cumsum(surv), # only works if one row per day
+          rmst = cumsum(surv),
           rmst.low = cumsum(surv.low),
           rmst.high = cumsum(surv.high),
           hazard = hazard_predict$Estimate,
@@ -381,87 +435,103 @@ if(smooth){
     dplyr::select(!!!subgroup_syms, !!!exposure_syms, surv_smooth) |>
     tidyr::unnest(surv_smooth)
 
-  if(concise){
-    data_surv_smoothed <-
+  data_smoothed
+}
+
+
+if(smooth){
+  data_surv_smoothed <- smooth_km(data_tte, smooth_df)
+
+  ## Select a smaller set of variable
+  ## if requested via concise argument
+
+  data_surv_smoothed_output <-
+    if(concise){
       data_surv_smoothed |>
       select(
         !!!subgroup_syms,
         !!!exposure_syms,
         time,
-        cml.event,
-        n.risk,
+        n.risk, n.censor, n.event,
+        cml.event, inc,
         cmlinc, cmlinc.low, cmlinc.high
       )
-  }
+    } else {
+      data_surv_smoothed
+    }
 
-  ## output to disk
-  ## include both arrow and csvv formats here - if you don't want one of them,
+  ## output to disk ----
+  ## include both arrow and csv formats here - if you don't want one of them,
   ## don't include it in the `output:` slot in the action
 
   ## write arrow to disk
-  arrow::write_feather(data_surv_smoothed, fs::path(dir_output, glue("km_estimates{filename_suffix}.arrow")))
+  arrow::write_feather(data_surv_smoothed_output, fs::path(dir_output, glue("km_estimates{filename_suffix}.arrow")))
   ## write csv to disk
-  write_csv(data_surv_smoothed, fs::path(dir_output, glue("km_estimates{filename_suffix}.csv")))
+  write_csv(data_surv_smoothed_output, fs::path(dir_output, glue("km_estimates{filename_suffix}.csv")))
 }
 
-if(plot){
-  km_plot <- function(.data) {
+# Plot KM curves ----
+## if requested via `plot` argument
 
-    data_with_time0 <-
-      .data |>
-      mutate(
-        lagtime = lag(time, 1, 0), # assumes the time-origin is zero
-      ) %>%
-      group_modify(
-        ~ add_row(
-          .x,
-          time = 0, # assumes time origin is zero
-          lagtime = 0,
-          cmlinc = 0,
-          cmlinc.low = 0,
-          cmlinc.high = 0,
-          .before = 0
-        )
+km_plot <- function(.data) {
+
+  data_with_time0 <-
+    .data |>
+    mutate(
+      lagtime = lag(time, 1, 0), # assumes the time-origin is zero
+    ) %>%
+    group_modify(
+      ~ add_row(
+        .x,
+        time = 0, # assumes time origin is zero
+        lagtime = 0,
+        cmlinc = 0,
+        cmlinc.low = 0,
+        cmlinc.high = 0,
+        .before = 0
       )
-
-    ggplot_init <- if(length(exposure)==0L){
-      ggplot(data_with_time0)
-    } else {
-      exposure_sym <- sym(exposure)
-      ggplot(data_with_time0, aes(group = !!exposure_sym, colour = !!exposure_sym, fill = !!exposure_sym))
-    }
-
+    )
+  ggplot_init <- if(length(exposure)==0L){
+    ggplot(data_with_time0)
+  } else {
+    exposure_sym <- sym(exposure)
+    ggplot(data_with_time0, aes(group = !!exposure_sym, colour = !!exposure_sym, fill = !!exposure_sym))
+  }
     ggplot_init +
-      geom_step(aes(x = time, y = cmlinc), direction = "vh") +
-      geom_step(aes(x = time, y = cmlinc), direction = "vh", linetype = "dashed", alpha = 0.5) +
-      geom_rect(aes(xmin = lagtime, xmax = time, ymin = cmlinc.low, ymax = cmlinc.high), alpha = 0.1, colour = "transparent") +
-      facet_grid(rows = vars(!!!subgroup_syms)) +
-      scale_color_brewer(type = "qual", palette = "Set1", na.value = "grey") +
-      scale_fill_brewer(type = "qual", palette = "Set1", guide = "none", na.value = "grey") +
-      scale_y_continuous(expand = expansion(mult = c(0, 0.01))) +
-      coord_cartesian(xlim = c(0, NA)) +
-      labs(
-        x = "Time",
-        y = "Cumulative Incidence",
-        colour = NULL,
-        title = NULL
-      ) +
-      theme_minimal() +
-      theme(
-        axis.line.x = element_line(colour = "black"),
-        panel.grid.minor.x = element_blank(),
-        legend.position = "inside",
-        legend.position.inside = c(.05, .95),
-        legend.justification = c(0, 1),
-      )
-  }
-  km_plot_unrounded <- km_plot(data_surv_unrounded)
-  km_plot_rounded <- km_plot(data_surv_rounded)
-  ggsave(filename = fs::path(dir_output, glue("km_plot_rounded{filename_suffix}.png")), km_plot_rounded, width = 20, height = 20, units = "cm")
+    geom_step(aes(x = time, y = cmlinc), direction = "vh") +
+    geom_step(aes(x = time, y = cmlinc), direction = "vh", linetype = "dashed", alpha = 0.5) +
+    geom_rect(aes(xmin = lagtime, xmax = time, ymin = cmlinc.low, ymax = cmlinc.high), alpha = 0.1, colour = "transparent") +
+    facet_grid(rows = vars(!!!subgroup_syms)) +
+    scale_color_brewer(type = "qual", palette = "Set1", na.value = "grey") +
+    scale_fill_brewer(type = "qual", palette = "Set1", guide = "none", na.value = "grey") +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.01))) +
+    coord_cartesian(xlim = c(0, NA)) +
+    labs(
+      x = "Time",
+      y = "Cumulative Incidence",
+      colour = NULL,
+      title = NULL
+    ) +
+    theme_minimal() +
+    theme(
+      axis.line.x = element_line(colour = "black"),
+      panel.grid.minor.x = element_blank(),
+      legend.position = "inside",
+      legend.position.inside = c(.05, .95),
+      legend.justification = c(0, 1),
+    )
+}
+
+## output to disk ----
+if(plot){
   if(smooth){
-    km_plot_smoothed <- km_plot(data_surv_smoothed)
-    ggsave(filename = fs::path(dir_output, glue("km_plot_smoothed{filename_suffix}.png")), km_plot_smoothed, width = 20, height = 20, units = "cm")
+    km_plot <- km_plot(data_surv_smoothed)
+  } else{
+    km_plot <- km_plot(data_surv_rounded)
   }
+  ggsave(filename = fs::path(dir_output, glue("km_plotfilename_suffix}.png")), km_plot, width = 20, height = 20, units = "cm")
+}
+
 }
 
 
