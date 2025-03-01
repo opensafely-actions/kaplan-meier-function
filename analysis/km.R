@@ -41,6 +41,7 @@ if(length(args)==0){
   smooth_df <- as.integer("4")
   concise <- as.logical("TRUE")
   plot <- as.logical("FALSE")
+  contrast <- as.logical("TRUE")
 } else {
 
   library("optparse")
@@ -90,6 +91,9 @@ if(length(args)==0){
                 metavar = "TRUE/FALSE"),
     make_option("--plot", type = "logical", default = TRUE,
                 help = "[default: %default] logical. Should Kaplan-Meier plots be created in the output folder? These are fairly basic plots for sense-checking purposes.",
+                metavar = "TRUE/FALSE"),
+    make_option("--contrast", type = "logical", default = TRUE,
+                help = "[default: %default] logical. Should Kaplan-Meier curves for a binary exposure be compared to estimate risk difference, risk ratio, and survival ratio? Ignored if exposure is not supplied.",
                 metavar = "TRUE/FALSE")
   )
 
@@ -532,7 +536,76 @@ if(plot){
   ggsave(filename = fs::path(dir_output, glue("km_plotfilename_suffix}.png")), km_plot, width = 20, height = 20, units = "cm")
 }
 
+
+# Calculate contrasts between exposure groups ----
+# if requested via 'contrast` argument
+
+contrast_km <- function(.data) {
+
+  .data |>
+    filter(
+      time != 0
+    ) |>
+    mutate(
+      # convert exposure variable to a 0/1 binary variable, with 0 the reference level
+      "{exposure}" := as.integer(as.factor(!!!exposure_syms)) - 1L
+    ) |>
+    pivot_wider(
+      id_cols = all_of(c(subgroups, "time")),
+      #names_glue = "{.value}_{!!!exposure_syms}", #but this doesn't work because scoping, quosures, something something
+      names_from = c(!!!exposure_syms),
+      names_sep = "_",
+      values_from = c(
+        n.risk, n.event, n.censor,
+        cml.nrisk, cml.event, cml.rate,
+        cmlinc, cmlinc.se, cmlinc.low, cmlinc.high,
+        #rmst, rmst.low, rmst.high
+      )
+    ) |>
+    mutate(
+      n.nonevent_0 = n.risk_0 - n.event_0,
+      n.nonevent_1 = n.risk_1 - n.event_1,
+
+      ## cumulative quantities using information during time [0,t] (not just [t])
+
+      # cumulative incidence rate ratio
+      cmlirr = cml.rate_1 / cml.rate_0,
+      cmlirr.ln.se = sqrt((1 / cml.event_0) + (1 / cml.event_1)),
+      cmlirr.ll = exp(log(cmlirr) + qnorm(0.025) * cmlirr.ln.se),
+      cmlirr.ul = exp(log(cmlirr) + qnorm(0.975) * cmlirr.ln.se),
+
+      # survival ratio, standard error, and confidence limits
+      sr = (1-cmlinc_1) / (1-cmlinc_0),
+      sr.ln.se = (cmlinc.se_0 / (1-cmlinc_0)) + (cmlinc.se_1 / (1-cmlinc_1)),
+      sr.ll = exp(log(sr) + qnorm(0.025) * sr.ln.se),
+      sr.ul = exp(log(sr) + qnorm(0.975) * sr.ln.se),
+
+      # risk ratio, standard error, and confidence limits, using delta method
+      rr = cmlinc_1 / cmlinc_0,
+      # cirr.ln = log(cirr),
+      rr.ln.se = sqrt((cmlinc.se_1 / cmlinc_1)^2 + (cmlinc.se_0 / cmlinc_0)^2),
+      rr.ll = exp(log(rr) + qnorm(0.025) * rr.ln.se),
+      rr.ul = exp(log(rr) + qnorm(0.975) * rr.ln.se),
+
+      # risk difference, standard error and confidence limits, using delta method
+      rd = cmlinc_1 - cmlinc_0,
+      rd.se = sqrt((cmlinc.se_0^2) + (cmlinc.se_1^2)),
+      rd.ll = rd + qnorm(0.025) * rd.se,
+      rd.ul = rd + qnorm(0.975) * rd.se,
+    ) |>
+    select(
+      # remove rows relating to individual curves
+      -ends_with("0"),
+      -ends_with("1"),
+      -ends_with(".se"),
+    )
 }
 
+if((length(exposure)>0) & contrast){
+  data_contrasts_rounded <- contrast_km(data_surv_rounded)
 
+  ## output to disk ----
+  arrow::write_feather(data_contrasts_rounded, fs::path(dir_output, glue("km_constrasts_rounded{filename_suffix}.arrow")))
+  write_csv(data_contrasts_rounded, fs::path(dir_output, glue("km_constrasts_rounded{filename_suffix}.csv")))
+}
 
