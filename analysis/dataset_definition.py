@@ -60,6 +60,7 @@ alive = (ons_deaths.date>=first_vax_date) | ons_deaths.date.is_null()
 dataset.define_population(
   registered_patients.exists_for_patient()
   & alive
+  & patients.sex.is_in(["male", "female"])
   & first_covid_vaccination.exists_for_patient()
   & (patients.age_on(first_vax_date) >=16)
 )
