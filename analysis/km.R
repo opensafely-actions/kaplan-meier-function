@@ -33,7 +33,7 @@ if(length(args)==0){
   origin_date <- "first_vax_date"
   event_date <- "second_vax_date"
   censor_date <- c() # "censor_date"
-  weight <- NULL
+  weight <- c()
   min_count <- as.integer("6")
   method <- "constant"
   max_fup <- as.numeric("365")
@@ -48,28 +48,28 @@ if(length(args)==0){
 
   option_list <- list(
     make_option("--df_input", type = "character",
-                help = "[default: %default] character. The input dataset .arrow filename. feather/arrow format is enforced to ensure date types are preserved.  Must be specified.",
+                help = "[default: Must be specified] character. The input dataset .arrow filename. feather/arrow format is enforced to ensure date types are preserved.",
                 metavar = "df_input.arrow"),
     make_option("--dir_output", type = "character",
-                help = "[default: %default] character. The output directory. Must be specified.",
+                help = "[default: must be specified] character. The output directory.",
                 metavar = "/output/"),
-    make_option("--exposure", type = "character", default = NULL,
-                help = "[default: %default] character. The name of an exposure variable in the input dataset. Must be binary or not given. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same). If not specified, no stratification will occur.",
+    make_option("--exposure", type = "character", default = character(),
+                help = "[default: NULL] character. The name of an exposure variable in the input dataset. Must be binary or not given. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same). If not specified, no stratification will occur.",
                 metavar = "exposure_varname"),
-    make_option("--subgroups", type = "character", default = NULL,
-                help = "character. The name of a subgroup variable or list of variable names. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If not specified, no stratification will occur.",
+    make_option("--subgroups", type = "character", default = character(),
+                help = "[default: NULL] The name of a subgroup variable or list of variable names. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If not specified, no stratification will occur.",
                 metavar = "subgroup_varname"),
     make_option("--origin_date", type = "character",
-                help = "The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the start of follow-up. Must be specified.",
+                help = "[default: must be specified] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the start of follow-up.",
                 metavar = "origin_varname"),
     make_option("--event_date", type = "character",
-                help = "The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the event date. Must be specified.",
+                help = "[default: must be specified] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the event date.",
                 metavar = "event_varname"),
-    make_option("--censor_date", type = "character", default = NULL,
-                help = "[default: %default] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') that represents the censoring date. If not specified, then no censoring occurs except at `max_fup` time.",
+    make_option("--censor_date", type = "character", default = character(),
+                help = "[default: NULL] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') that represents the censoring date. If not specified, then no censoring occurs except at `max_fup` time.",
                 metavar = "censor_varname"),
-    make_option("--weight", type = "character", default = NULL,
-                help = "[default: %default] The name of a numeric variable that represents balancing / sampling weights. If not specified, then no weighting occurs.",
+    make_option("--weight", type = "character", default = character(),
+                help = "[default: NULL] The name of a numeric variable that represents balancing / sampling weights. If not specified, then no weighting occurs.",
                 metavar = "censor_varname"),
     make_option("--min_count", type = "integer", default = 6,
                 help = "[default: %default] integer. The minimum permissable event and censor counts for each 'step' in the KM curve. This ensures that at least `min_count` events occur at each event time.",
@@ -89,7 +89,7 @@ if(length(args)==0){
     make_option("--concise", type = "logical", default = TRUE,
                 help = "[default: %default] logical. Should the outputted table only report core variables (defined here as exposure, subgroups, time, number at risk, cumulative number of events, cumulative incidence, and confidence limits) (TRUE) or should it report everything (FALSE)?",
                 metavar = "TRUE/FALSE"),
-    make_option("--plot", type = "logical", default = TRUE,
+    make_option("--plot", type = "logical", default = FALSE,
                 help = "[default: %default] logical. Should Kaplan-Meier plots be created in the output folder? These are fairly basic plots for sense-checking purposes.",
                 metavar = "TRUE/FALSE"),
     make_option("--contrast", type = "logical", default = TRUE,
@@ -104,15 +104,14 @@ if(length(args)==0){
 
   opt <- parse_args(opt_parser)
   list2env(opt, .GlobalEnv)
-
 }
-
 
 # Use quasiquotation for passing exposure and subgroup stratification variables
 # around the place
-# use `syms()` instead of `sym()`
-# even though it's possible to pull only one exposure or subgroup variable is from the args (without hacking!)
-# this ensures that if `exposure` or `subgroups` is not used, the quasiquotation still works inside ggplot, transmute, etc
+# use `syms()` instead of `sym()` even though it's possible to pull
+# only one exposure or subgroup variable is from the args (without hacking!)
+# this ensures that if `exposure` or `subgroups` is not used,
+# the quasiquotation still works inside ggplot, transmute, etc
 
 exposure_syms <- syms(exposure)
 subgroup_syms <- syms(subgroups)
@@ -123,7 +122,7 @@ filename_suffix <- ifelse(
   glue("-{subgroups}")
 )
 
-# Create output directories ----
+# Create output directory ----
 
 dir_output <- here::here(dir_output)
 fs::dir_create(dir_output)
@@ -153,9 +152,6 @@ if(!is.weighted) {
 
 data_tte <-
   data_patients |>
-  mutate(
-    weights=rnorm(n(),1,0.1)
-  ) |>
   transmute(
     patient_id,
     .all = TRUE,
