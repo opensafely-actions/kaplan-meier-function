@@ -198,8 +198,8 @@ if(length(exposure)>0){
       max_event_time = max(event_time[event_indicator])
     )
 
-  cat("maximum follow-up time in exposure levels [", paste0(max_time_data[[exposure]], collapse=", "), "] is [", paste0(max_time_data$max_fup_time, collapse= ", "), "]")
-  cat("maximum event time in exposure levels [", paste0(max_time_data[[exposure]], collapse=", "), "] is [", paste0(max_time_data$max_event_time, collapse= ", "), "]")
+  cat("maximum follow-up time in exposure levels [", paste0(max_time_data[[exposure]], collapse=", "), "] is [", paste0(max_time_data$max_fup_time, collapse= ", "), "]", "\\n")
+  cat("maximum event time in exposure levels [", paste0(max_time_data[[exposure]], collapse=", "), "] is [", paste0(max_time_data$max_event_time, collapse= ", "), "]", "\\n")
 } else {
   max_time_data <-
     data_tte |>
@@ -207,8 +207,8 @@ if(length(exposure)>0){
       max_fup_time = max(event_time),
       max_event_time = max(event_time[event_indicator])
     )
-  cat("maximum follow-up time is [", paste0(max_time_data$max_fup_time, collapse= ", "), "]")
-  cat("maximum event time is [", paste0(max_time_data$max_event_time, collapse= ", "), "]")
+  cat("maximum follow-up time is [", paste0(max_time_data$max_fup_time, collapse= ", "), "]", "\\n")
+  cat("maximum event time is [", paste0(max_time_data$max_event_time, collapse= ", "), "]", "\\n")
 }
 
 
