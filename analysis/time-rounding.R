@@ -278,7 +278,7 @@ round_event_times <- function(time_to_event, min_count, origin=0L, group.method=
 
 
 
-round_cmlcount <- function(x, time, min_count, method="linear", integer.times=TRUE) {
+round_cmlcount <- function(x, time, min_count, method="linear", integer.times=TRUE, integer.counts=TRUE) {
 
   # Purpose:
   # For a vector of cumulative event counts `x`, indexed at `time`, this function
@@ -288,7 +288,7 @@ round_cmlcount <- function(x, time, min_count, method="linear", integer.times=TR
   # these are rounded in a way that is undetectable.
 
   stopifnot("x must be non-descreasing" = all(diff(x)>=0))
-  stopifnot("x must be integer" = all(x %% 1 ==0))
+  if(integer.counts) stopifnot("x must be integer" = all(x %% 1 ==0))
 
   # round events such that they are no fewer than min_count events per step
   # steps are then shifted by ` - floor(min_count/2)`, to give  to remove bias

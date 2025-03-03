@@ -40,14 +40,14 @@ follows:
 
 
     Options:
-        --df_input=DF_INPUT.FEATHER
-            [default: NULL] character. The input dataset .feather filename. feather format is enforced to ensure date types are preserved.  Must be specified.
+        --df_input=DF_INPUT.ARROW
+            [default: NULL] character. The input dataset .arrow filename. feather/arrow format is enforced to ensure date types are preserved.  Must be specified.
 
         --dir_output=/OUTPUT/
             [default: NULL] character. The output directory. Must be specified.
 
         --exposure=EXPOSURE_VARNAME
-            [default: character(0)] character. The name of an exposure variable in the input dataset. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same). If not specified, no stratification will occur.
+            [default: NULL] character. The name of an exposure variable in the input dataset. Must be binary or not given. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same). If not specified, no stratification will occur.
 
         --subgroups=SUBGROUP_VARNAME
             character. The name of a subgroup variable or list of variable names. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If not specified, no stratification will occur.
@@ -59,7 +59,10 @@ follows:
             The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the event date. Must be specified.
 
         --censor_date=CENSOR_VARNAME
-            [default: character(0)] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') that represents the censoring date. If not specified, then no censoring occurs except at `max_fup` time.
+            [default: NULL] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') that represents the censoring date. If not specified, then no censoring occurs except at `max_fup` time.
+
+        --weight=CENSOR_VARNAME
+            [default: NULL] The name of a numeric variable that represents balancing / sampling weights. If not specified, then no weighting occurs.
 
         --min_count=MIN_COUNT
             [default: 6] integer. The minimum permissable event and censor counts for each 'step' in the KM curve. This ensures that at least `min_count` events occur at each event time.
@@ -81,6 +84,9 @@ follows:
 
         --plot=TRUE/FALSE
             [default: TRUE] logical. Should Kaplan-Meier plots be created in the output folder? These are fairly basic plots for sense-checking purposes.
+
+        --contrast=TRUE/FALSE
+            [default: TRUE] logical. Should Kaplan-Meier curves for a binary exposure be compared to estimate risk difference, risk ratio, and survival ratio? Ignored if exposure is not supplied.
 
         -h, --help
             Show this help message and exit
