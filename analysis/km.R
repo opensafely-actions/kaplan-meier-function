@@ -312,10 +312,8 @@ round_km <- function(.data, min_count=0, method="constant") {
       # https://doi.org/10.1186/1471-2288-13-152
       rmst = cumsum(surv), # this only works if one row per day using fill_times! otherwise need cumsum(surv*int)
       rmst.se = sqrt(((2* cumsum(time*surv)) - (rmst^2))/n.risk), # this only works if one row per day using fill_times! otherwise need sqrt(((2* cumsum(time*interval*surv)) - (rmst^2))/n.risk)
-      #rmst.low = rmst + (qnorm(0.025) * rmst.se),
-      #rmst.high = rmst + (qnorm(0.975) * rmst.se),
-      rmst.low = cumsum(surv.low),
-      rmst.high = cumsum(surv.high),
+      rmst.low = rmst + (qnorm(0.025) * rmst.se),
+      rmst.high = rmst + (qnorm(0.975) * rmst.se),
     ) |>
     # filter(
     #   !(n.event==0 & n.censor==0 & !fill_times) # remove times where there are no events (unless all possible event times are requested with fill_times)
@@ -601,7 +599,7 @@ if((length(exposure)>0) & contrast){
   data_contrasts_rounded <- contrast_km(data_surv_rounded)
 
   ## output to disk ----
-  arrow::write_feather(data_contrasts_rounded, fs::path(dir_output, glue("km_constrasts_rounded{filename_suffix}.arrow")))
-  write_csv(data_contrasts_rounded, fs::path(dir_output, glue("km_constrasts_rounded{filename_suffix}.csv")))
+  arrow::write_feather(data_contrasts_rounded, fs::path(dir_output, glue("contrasts_rounded{filename_suffix}.arrow")))
+  write_csv(data_contrasts_rounded, fs::path(dir_output, glue("contrasts_rounded{filename_suffix}.csv")))
 }
 
