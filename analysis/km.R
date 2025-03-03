@@ -28,12 +28,12 @@ if(length(args)==0){
   # use for interactive testing
   df_input <- "output/extract.arrow"
   dir_output <- "output/km_estimates/"
-  exposure <- c()
+  exposure <- c("sex")
   subgroups <- c("age_group")
   origin_date <- "first_vax_date"
   event_date <- "second_vax_date"
-  censor_date <- c() # "censor_date"
-  weight <- c()
+  censor_date <- character() # "censor_date"
+  weight <- character()
   min_count <- as.integer("6")
   method <- "constant"
   max_fup <- as.numeric("365")
@@ -134,7 +134,6 @@ fs::dir_create(dir_output)
 data_patients <-
   arrow::read_feather(here::here(df_input))
 
-
 ## Derive variables ----
 
 if(length(censor_date)==0) {
@@ -154,7 +153,6 @@ data_tte <-
   data_patients |>
   transmute(
     patient_id,
-    .all = TRUE,
     !!!exposure_syms,
     !!!subgroup_syms,
     .weight = .data[[weight]],
@@ -540,19 +538,20 @@ contrast_km <- function(.data) {
     filter(
       time != 0
     ) |>
+    ungroup() |>
     mutate(
       # convert exposure variable to a 0/1 binary variable, with 0 the reference level
       "{exposure}" := as.integer(as.factor(!!!exposure_syms)) - 1L
     ) |>
     pivot_wider(
       id_cols = all_of(c(subgroups, "time")),
-      #names_glue = "{.value}_{!!!exposure_syms}", #but this doesn't work because scoping, quosures, something something
+      #names_glue = "{.value}_{exposure}", #but this doesn't work because scoping, quosures, something something
       names_from = c(!!!exposure_syms),
       names_sep = "_",
       values_from = c(
         n.risk, n.event, n.censor,
         cml.nrisk, cml.event, cml.rate,
-        cmlinc, cmlinc.se, cmlinc.low, cmlinc.high,
+        cmlinc, cmlinc.se, cmlinc.low, cmlinc.high#,
         #rmst, rmst.low, rmst.high
       )
     ) |>
