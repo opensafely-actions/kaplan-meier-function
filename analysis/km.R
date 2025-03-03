@@ -474,6 +474,7 @@ km_plot <- function(.data) {
   data_with_time0 <-
     .data |>
     mutate(
+      "{exposure}" := as.factor(!!!exposure_syms),
       lagtime = lag(time, 1, 0), # assumes the time-origin is zero
     ) %>%
     group_modify(
