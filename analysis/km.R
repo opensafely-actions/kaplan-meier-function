@@ -359,9 +359,9 @@ data_surv_rounded_output <-
 ## don't include it in the `output:` slot in the action
 
 ## write arrow to disk
-arrow::write_feather(data_surv_rounded_output, fs::path(dir_output, glue("km_estimates{filename_suffix}.arrow")))
+arrow::write_feather(data_surv_rounded_output, fs::path(dir_output, glue("estimates{filename_suffix}.arrow")))
 ## write csv to disk
-write_csv(data_surv_rounded_output, fs::path(dir_output, glue("km_estimates{filename_suffix}.csv")))
+write_csv(data_surv_rounded_output, fs::path(dir_output, glue("estimates{filename_suffix}.csv")))
 
 
 # Smoothing via parametric survival ----
@@ -461,9 +461,9 @@ if(smooth){
   ## don't include it in the `output:` slot in the action
 
   ## write arrow to disk
-  arrow::write_feather(data_surv_smoothed_output, fs::path(dir_output, glue("km_estimates{filename_suffix}.arrow")))
+  arrow::write_feather(data_surv_smoothed_output, fs::path(dir_output, glue("estimates{filename_suffix}.arrow")))
   ## write csv to disk
-  write_csv(data_surv_smoothed_output, fs::path(dir_output, glue("km_estimates{filename_suffix}.csv")))
+  write_csv(data_surv_smoothed_output, fs::path(dir_output, glue("estimates{filename_suffix}.csv")))
 }
 
 # Plot KM curves ----
@@ -525,7 +525,7 @@ if(plot){
   } else{
     km_plot <- km_plot(data_surv_rounded)
   }
-  ggsave(filename = fs::path(dir_output, glue("km_plotfilename_suffix}.png")), km_plot, width = 20, height = 20, units = "cm")
+  ggsave(filename = fs::path(dir_output, glue("plot{filename_suffix}.png")), km_plot, width = 20, height = 20, units = "cm")
 }
 
 
