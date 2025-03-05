@@ -6,7 +6,7 @@ on:
     branches:
       - main
 
-concurrency: tag-new-version
+concurrency: tag-new-version-group
 
 jobs:
   test-integration:
