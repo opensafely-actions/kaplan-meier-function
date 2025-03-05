@@ -42,6 +42,7 @@ if(length(args)==0){
   concise <- as.logical("TRUE")
   plot <- as.logical("FALSE")
   contrast <- as.logical("TRUE")
+  filename_suffix <- as.character("")
 } else {
 
   library("optparse")
@@ -51,7 +52,7 @@ if(length(args)==0){
                 help = "[default: Must be specified] character. The input dataset .arrow filename. feather/arrow format is enforced to ensure date types are preserved.",
                 metavar = "df_input.arrow"),
     make_option("--dir_output", type = "character",
-                help = "[default: must be specified] character. The output directory.",
+                help = "[default: must be specified] character. The output directory. All requested output files (eg 'estimates.arrow', 'contrasts.arrow') will be placed in this directory. See also: 'filename_suffix' argument.",
                 metavar = "/output/"),
     make_option("--exposure", type = "character", default = character(),
                 help = "[default: NULL] character. The name of an exposure variable in the input dataset. Must be binary or not given. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same). If not specified, no stratification will occur.",
@@ -90,10 +91,13 @@ if(length(args)==0){
                 help = "[default: %default] logical. Should the outputted table only report core variables (defined here as exposure, subgroups, time, number at risk, cumulative number of events, cumulative incidence, and confidence limits) (TRUE) or should it report everything (FALSE)?",
                 metavar = "TRUE/FALSE"),
     make_option("--plot", type = "logical", default = FALSE,
-                help = "[default: %default] logical. Should Kaplan-Meier plots be created in the output folder? These are fairly basic plots for sense-checking purposes.",
+                help = "[default: %default] logical. Should Kaplan-Meier plots be created in the output directory? These are fairly basic plots for sense-checking purposes.",
                 metavar = "TRUE/FALSE"),
     make_option("--contrast", type = "logical", default = TRUE,
                 help = "[default: %default] logical. Should Kaplan-Meier curves for a binary exposure be compared to estimate risk difference, risk ratio, and survival ratio? Ignored if exposure is not supplied.",
+                metavar = "TRUE/FALSE"),
+    make_option("--filename_suffix", type = "character", default = "",
+                help = "[default: %default] character. This will be appended to the end of all outputted files. This is useful if you want to re-run the KM action across different arguments, but put outputs from all actions in the same directory.",
                 metavar = "TRUE/FALSE")
   )
 
@@ -115,12 +119,6 @@ if(length(args)==0){
 
 exposure_syms <- syms(exposure)
 subgroup_syms <- syms(subgroups)
-
-filename_suffix <- ifelse(
-  length(subgroups)==0,
-  "",
-  glue("-{subgroups}")
-)
 
 # Create output directory ----
 
@@ -198,8 +196,8 @@ if(length(exposure)>0){
       max_event_time = max(event_time[event_indicator])
     )
 
-  cat("maximum follow-up time in exposure levels [", paste0(max_time_data[[exposure]], collapse=", "), "] is [", paste0(max_time_data$max_fup_time, collapse= ", "), "]", "\\n")
-  cat("maximum event time in exposure levels [", paste0(max_time_data[[exposure]], collapse=", "), "] is [", paste0(max_time_data$max_event_time, collapse= ", "), "]", "\\n")
+  cat("maximum follow-up time in exposure levels [", paste0(max_time_data[[exposure]], collapse=", "), "] is [", paste0(max_time_data$max_fup_time, collapse= ", "), "]", "\n")
+  cat("maximum event time in exposure levels [", paste0(max_time_data[[exposure]], collapse=", "), "] is [", paste0(max_time_data$max_event_time, collapse= ", "), "]", "\n")
 } else {
   max_time_data <-
     data_tte |>
@@ -599,7 +597,7 @@ if((length(exposure)>0) & contrast){
   data_contrasts_rounded <- contrast_km(data_surv_rounded)
 
   ## output to disk ----
-  arrow::write_feather(data_contrasts_rounded, fs::path(dir_output, glue("contrasts_rounded{filename_suffix}.arrow")))
-  write_csv(data_contrasts_rounded, fs::path(dir_output, glue("contrasts_rounded{filename_suffix}.csv")))
+  arrow::write_feather(data_contrasts_rounded, fs::path(dir_output, glue("contrasts{filename_suffix}.arrow")))
+  write_csv(data_contrasts_rounded, fs::path(dir_output, glue("contrasts{filename_suffix}.csv")))
 }
 
