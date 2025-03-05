@@ -41,22 +41,22 @@ follows:
 
     Options:
         --df_input=DF_INPUT.ARROW
-            [default: NULL] character. The input dataset .arrow filename. feather/arrow format is enforced to ensure date types are preserved.  Must be specified.
+            [default: Must be specified] character. The input dataset .arrow filename. feather/arrow format is enforced to ensure date types are preserved.
 
         --dir_output=/OUTPUT/
-            [default: NULL] character. The output directory. Must be specified.
+            [default: must be specified] character. The output directory. All requested output files (eg 'estimates.arrow', 'contrasts.arrow') will be placed in this directory. See also: 'filename_suffix' argument.
 
         --exposure=EXPOSURE_VARNAME
             [default: NULL] character. The name of an exposure variable in the input dataset. Must be binary or not given. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same). If not specified, no stratification will occur.
 
         --subgroups=SUBGROUP_VARNAME
-            character. The name of a subgroup variable or list of variable names. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If not specified, no stratification will occur.
+            [default: NULL] The name of a subgroup variable or list of variable names. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If not specified, no stratification will occur.
 
         --origin_date=ORIGIN_VARNAME
-            The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the start of follow-up. Must be specified.
+            [default: must be specified] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the start of follow-up.
 
         --event_date=EVENT_VARNAME
-            The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the event date. Must be specified.
+            [default: must be specified] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the event date.
 
         --censor_date=CENSOR_VARNAME
             [default: NULL] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') that represents the censoring date. If not specified, then no censoring occurs except at `max_fup` time.
@@ -83,10 +83,13 @@ follows:
             [default: TRUE] logical. Should the outputted table only report core variables (defined here as exposure, subgroups, time, number at risk, cumulative number of events, cumulative incidence, and confidence limits) (TRUE) or should it report everything (FALSE)?
 
         --plot=TRUE/FALSE
-            [default: TRUE] logical. Should Kaplan-Meier plots be created in the output folder? These are fairly basic plots for sense-checking purposes.
+            [default: FALSE] logical. Should Kaplan-Meier plots be created in the output directory? These are fairly basic plots for sense-checking purposes.
 
         --contrast=TRUE/FALSE
             [default: TRUE] logical. Should Kaplan-Meier curves for a binary exposure be compared to estimate risk difference, risk ratio, and survival ratio? Ignored if exposure is not supplied.
+
+        --filename_suffix=TRUE/FALSE
+            [default: ] character. This will be appended to the end of all outputted files. This is useful if you want to re-run the KM action across different arguments, but put outputs from all actions in the same directory.
 
         -h, --help
             Show this help message and exit
@@ -97,13 +100,15 @@ something like this:
 ``` yaml
 
 my_kaplan_meier_function_action:
-  run: kaplan-meier-function:v0.0.1
-    --df_input=cohort.csv
-    --df_output=output/km_estimates.csv
+  run: kaplan-meier-function:v0.0.14
+    --df_input=cohort.arrow
+    --df_output=output/km
     ...# more arguments here
   outputs:
     highly_sensitive:
-      output: output/km_estimates/.*feather
+      estimates: output/estimates.*arrow
+      contrasts: output/contrasts.*arrow
+      plots: output/plot.png
 
 ...
 ```
