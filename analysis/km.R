@@ -205,8 +205,8 @@ if(length(exposure)>0){
       max_fup_time = max(event_time),
       max_event_time = max(event_time[event_indicator])
     )
-  cat("maximum follow-up time is [", paste0(max_time_data$max_fup_time, collapse= ", "), "]", "\\n")
-  cat("maximum event time is [", paste0(max_time_data$max_event_time, collapse= ", "), "]", "\\n")
+  cat("maximum follow-up time is [", paste0(max_time_data$max_fup_time, collapse= ", "), "]", "\n")
+  cat("maximum event time is [", paste0(max_time_data$max_event_time, collapse= ", "), "]", "\n")
 }
 
 
