@@ -50,7 +50,7 @@ follows:
             [default: NULL] character. The name of an exposure variable in the input dataset. Must be binary or not given. All outputs will be stratified by this variable. This could be an exposure in the usual sense, or it could (mis)used to show different types of events (as long as the censoring structure is the same). If not specified, no stratification will occur.
 
         --subgroups=SUBGROUP_VARNAME
-            [default: NULL] The name of a subgroup variable or list of variable names. If a subgroup variable is used, analyses will be stratified as exposure * ( subgroup1, subgroup2, ...). If not specified, no stratification will occur.
+            [default: NULL] The name(s) of the subgroup variable(s). If using multiple subgroup variables, delimit with a dash (-), for example 'age_group-sex'. If subgroup variables are used, analyses will be stratified as exposure * subgroup1 * subgroup2 * ... (multiplicatively, not additively). If not specified, no stratification will occur.
 
         --origin_date=ORIGIN_VARNAME
             [default: must be specified] The name of a date variable (or name of a variable that is coercable to a date eg 'YYYY-MM-DD') in the input dataset that represents the start of follow-up.

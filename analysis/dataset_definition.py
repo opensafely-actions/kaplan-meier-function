@@ -66,7 +66,7 @@ dataset.define_population(
 )
 
 
-# grouping variables
+# example exposure / stratification variables
 
 dataset.sex = patients.sex
 
@@ -78,6 +78,8 @@ dataset.age_group = case(
   when(dataset.age >= 70).then("aged 70+"),
   otherwise="unknown",
 )
+
+dataset.region = registered_patients.practice_nuts1_region_name
 
 
 # start of follow up variable

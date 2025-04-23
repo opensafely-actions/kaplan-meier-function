@@ -17,7 +17,7 @@ actions:
       --df_input output/extract.arrow
       --dir_output output/km_estimates/
       --exposure sex
-      --subgroups age_group
+      --subgroups age_group-region
       --origin_date first_vax_date
       --event_date second_vax_date
       --censor_date censor_date
